@@ -358,13 +358,13 @@ export async function nhanGoi(goi, { taiLai = true } = {}) {
  */
 export async function nhanTaiLieu(link, tuyChon = {}) {
   const fileId = idTuLink(link);
-  if (!CONFIG.apiKey) {
+  if (!CONFIG.shareUrl) {
     throw new Error(
-      'Chưa cấu hình CONFIG.apiKey (khoá API trình duyệt) trong drive-sync/config.js '
+      'Chưa cấu hình CONFIG.shareUrl (Worker tải gói chia sẻ) trong drive-sync/config.js '
       + '— chưa tải được gói chia sẻ công khai.'
     );
   }
   setStatus('Đang tải gói chia sẻ...');
-  const goi = await taiJsonCongKhai(fileId, CONFIG.apiKey);
+  const goi = await taiJsonCongKhai(fileId, CONFIG.shareUrl);
   return nhanGoi(goi, tuyChon);
 }

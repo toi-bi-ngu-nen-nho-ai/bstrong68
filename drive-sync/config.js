@@ -17,10 +17,10 @@ export const CONFIG = {
   // không bắt đầu bằng filePrefix/backupPrefix — nếu không nó lọt vào danh sách
   // phiên bản, bị tải về ghi đè cả workspace hoặc bị prune xoá mất.
   sharePrefix: 'bstr-chia-se-',
-  // Khoá API trình duyệt (Browser key) để người NHẬN tải gói chia sẻ công khai
-  // mà không cần đăng nhập Google. Chủ sở hữu tự dán vào sau. Rỗng => nhanTaiLieu
-  // báo lỗi rõ ràng thay vì gọi mạng hỏng.
-  apiKey: 'AIzaSyCL9O5aH9MZrCZ38Iw6iz6NoNt9vAKFbDA',
+  // Người NHẬN tải gói chia sẻ công khai mà không cần đăng nhập Google, qua Worker
+  // services/proxy: Worker giữ khoá API Google (Secret GOOGLE_API_KEY), mã web không
+  // có khoá. localhost:1000 cũng nằm trong ALLOWED_ORIGINS của Worker nên dùng chung.
+  shareUrl: 'https://proxy.bstrong68.com/api/worker/drive-share',
   keepVersions: 5,
   keepBackups: 3,
   autoSaveMs: 2 * 60 * 1000,

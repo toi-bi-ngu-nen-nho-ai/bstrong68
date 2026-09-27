@@ -19,7 +19,7 @@ try {
       }]);
     }
   }
-  await import('./drive-sync/index.js?bstr-login=4');
+  await import('./drive-sync/index.js?bstr-login=5');
 } catch (error) {
   console.error('[bstr] Không thể khởi động an toàn',error);
   document.getElementById('bstrIntroOverlay')?.remove();

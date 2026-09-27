@@ -152,12 +152,11 @@ export async function quyenCuaTep(token, fileId) {
 }
 
 /**
- * Tải gói chia sẻ KHÔNG cần OAuth — người nhận có thể chưa hề đăng nhập. Chỉ
- * dùng khoá API trình duyệt; tệp phải đã được moChoMoiNguoiDoc().
+ * Tải gói chia sẻ KHÔNG cần OAuth — người nhận có thể chưa hề đăng nhập. Đi qua
+ * Worker (CONFIG.shareUrl) giữ khoá API; tệp phải đã được moChoMoiNguoiDoc().
  */
-export async function taiJsonCongKhai(fileId, apiKey) {
-  const url = `${API}/files/${encodeURIComponent(fileId)}?alt=media&key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url);
+export async function taiJsonCongKhai(fileId, shareUrl) {
+  const res = await fetch(`${shareUrl}?id=${encodeURIComponent(fileId)}`);
   if (!res.ok) throw new Error(`Tải gói chia sẻ lỗi ${res.status}: ${await res.text()}`);
   return res.json();
 }
