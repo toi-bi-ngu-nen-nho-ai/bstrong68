@@ -2,7 +2,7 @@ import { CONFIG, LS } from './config.js';
 import { exportAll, restore, deviceId, taiLieuMauBundle } from './store.js';
 import { getToken, isSignedIn, signIn, signOut } from './auth.js';
 import {
-  ensureFolder, uploadJson, listVersions, listBackups, downloadJson, prune, pruneBackups,
+  ensureFolder, uploadJson, listVersions, listBackups, downloadJson, pruneVersions, pruneBackups,
   listSelfTest, deleteFile,
 } from './drive.js';
 import {
@@ -25,6 +25,15 @@ export function moTaLanLuu(now = new Date()) {
   if (!d || Number.isNaN(d.getTime())) return 'Chưa lưu lên Drive lần nào';
   const gio = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   return d.toDateString() === now.toDateString() ? `Đã lưu Drive lúc ${gio}` : `Đã lưu Drive lúc ${gio} ${d.toLocaleDateString('vi-VN')}`;
+}
+
+/** Tên thiết bị hiện cho người dùng, tự đặt từ trình duyệt: "Chrome · Windows", "Safari · iPhone". */
+export function tenThietBi(ua = globalThis.navigator?.userAgent || '') {
+  const trinhDuyet = [[/Edg\//, 'Edge'], [/coc_coc_browser/, 'Cốc Cốc'], [/OPR\//, 'Opera'], [/Firefox\//, 'Firefox'],
+    [/Chrome\/|CriOS\//, 'Chrome'], [/Safari\//, 'Safari']].find(([re]) => re.test(ua))?.[1] || 'Trình duyệt';
+  const heDieuHanh = [[/iPhone/, 'iPhone'], [/iPad/, 'iPad'], [/Android/, 'Android'], [/Windows/, 'Windows'],
+    [/Mac OS X|Macintosh/, 'macOS'], [/CrOS/, 'ChromeOS'], [/Linux/, 'Linux']].find(([re]) => re.test(ua))?.[1] || 'máy khác';
+  return `${trinhDuyet} · ${heDieuHanh}`;
 }
 
 let folderId = null;
@@ -197,7 +206,9 @@ export async function saveNow({ force = false, background = false } = {}) {
     }
 
     const name = `${CONFIG.filePrefix}${payload.savedAt.replace(/[:.]/g, '-')}.json`;
-    const up = await uploadJson(token, await folder(), name, payload);
+    const up = await uploadJson(token, await folder(), name, payload, {
+      bstrThietBi: deviceId(), bstrTen: tenThietBi(), bstrSoTaiLieu: String(soTaiLieu),
+    });
     writeState({
       fileId: up.id,
       savedAt: payload.savedAt,
@@ -206,8 +217,8 @@ export async function saveNow({ force = false, background = false } = {}) {
       soTaiLieu,
     });
 
-    const fresh = await listVersions(token, await folder());
-    await prune(token, fresh);
+    // Tối đa CONFIG.maxDevices thiết bị, mỗi thiết bị CONFIG.keepVersions bản; thiết bị lâu không lưu nhất bị bỏ.
+    await pruneVersions(token, await listVersions(token, await folder()));
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
     clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa

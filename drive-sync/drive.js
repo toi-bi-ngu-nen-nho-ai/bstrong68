@@ -33,9 +33,10 @@ export async function ensureFolder(token) {
   return created.id;
 }
 
-export async function uploadJson(token, folderId, filename, obj) {
+/** appProperties: nhãn Drive đọc được khi liệt kê mà không tải nội dung (bản lưu gắn thiết bị và số tài liệu). */
+export async function uploadJson(token, folderId, filename, obj, appProperties) {
   const boundary = 'bstr' + Math.random().toString(36).slice(2);
-  const meta = { name: filename, parents: [folderId], mimeType: 'application/json' };
+  const meta = { name: filename, parents: [folderId], mimeType: 'application/json', ...(appProperties && { appProperties }) };
   const body =
     `--${boundary}\r\n` +
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
@@ -67,7 +68,31 @@ async function listByPrefix(token, folderId, prefix, fields) {
 }
 
 export function listVersions(token, folderId) {
-  return listByPrefix(token, folderId, CONFIG.filePrefix, 'id,name,createdTime,size');
+  return listByPrefix(token, folderId, CONFIG.filePrefix, 'id,name,createdTime,size,appProperties');
+}
+
+/**
+ * Bản lưu cần xoá: giữ CONFIG.maxDevices thiết bị lưu gần nhất, mỗi thiết bị CONFIG.keepVersions bản
+ * mới nhất; thiết bị cũ hơn bị bỏ hết bản. Bản lưu từ trước khi có nhãn thiết bị (không có bstrThietBi)
+ * gom thành một nhóm, chiếm một chỗ như một thiết bị cho tới khi tự hết. `files` mới nhất trước.
+ * ponytail: "thiết bị" là một hồ sơ trình duyệt (mã trong localStorage); ẩn danh hay xoá dữ liệu trang
+ * tạo thiết bị mới và đẩy thiết bị cũ nhất ra, đúng như chủ dự án chọn (27/09).
+ */
+export function banThua(files, maxDevices = CONFIG.maxDevices, keep = CONFIG.keepVersions) {
+  const nhom = new Map(); // Map giữ thứ tự chèn = thiết bị lưu gần nhất trước
+  for (const f of files) {
+    const id = f.appProperties?.bstrThietBi || '';
+    if (!nhom.has(id)) nhom.set(id, []);
+    nhom.get(id).push(f);
+  }
+  return [...nhom.values()].flatMap((ds, i) => (i < maxDevices ? ds.slice(keep) : ds));
+}
+
+/** Dọn bản lưu theo banThua(). Chỉ gọi SAU khi tải lên thành công (bản vừa lưu luôn thuộc thiết bị mới nhất). */
+export async function pruneVersions(token, files) {
+  for (const f of banThua(files)) {
+    await call(token, `/files/${f.id}`, { method: 'DELETE' });
+  }
 }
 
 /** Các bản chụp trước khi ghi đè — cố ý KHÔNG nằm trong listVersions. */
@@ -83,7 +108,7 @@ export async function downloadJson(token, fileId) {
   return res.json();
 }
 
-/** Xoá các bản vượt quá số lượng cần giữ. Chỉ gọi SAU khi tải lên thành công. */
+/** Xoá các bản vượt quá số lượng cần giữ (bản sao lưu, gói chia sẻ). Chỉ gọi SAU khi tải lên thành công. */
 export async function prune(token, files, keep = CONFIG.keepVersions) {
   for (const f of files.slice(keep)) {
     await call(token, `/files/${f.id}`, { method: 'DELETE' });

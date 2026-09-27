@@ -21,6 +21,9 @@ export const CONFIG = {
   // services/proxy: Worker giữ khoá API Google (Secret GOOGLE_API_KEY), mã web không
   // có khoá. localhost:1000 cũng nằm trong ALLOWED_ORIGINS của Worker nên dùng chung.
   shareUrl: 'https://proxy.bstrong68.com/api/worker/drive-share',
+  // Bản lưu trên Drive: tối đa maxDevices thiết bị (hồ sơ trình duyệt), mỗi thiết bị keepVersions
+  // bản mới nhất; thêm thiết bị mới thì thiết bị lâu không lưu nhất bị bỏ (drive.js banThua).
+  maxDevices: 3,
   keepVersions: 5,
   keepBackups: 3,
   autoSaveMs: 2 * 60 * 1000,
