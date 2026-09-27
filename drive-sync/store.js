@@ -327,18 +327,60 @@ export async function prepareRestore(payload) {
 }
 
 /**
- * Danh sách workspace sau khi phục hồi. Mặc định HỢP nhất (xem restore). thayThe: máy CHƯA TỪNG đồng bộ chọn
- * "Lấy bản trên Drive" thì chỉ giữ workspace của bản Drive. Mỗi trình duyệt mới tự tạo một "Không gian làm việc
- * mẫu" mã ngẫu nhiên; hợp nhất thì máy có hai không gian cùng tên và lần lưu sau đẩy cả hai lên Drive (27/09).
- * Workspace bị bỏ đã nằm trong bản sao lưu chụp trước khi ghi đè (saoLuuTruocKhiGhiDe).
+ * Danh sách workspace sau khi phục hồi: HỢP nhất (xem restore), trừ các workspace trong boDuoc. Mỗi trình duyệt
+ * mới tự tạo một "Không gian làm việc mẫu" mã ngẫu nhiên; hợp nhất nó với bản Drive thì máy có hai không gian cùng
+ * tên và lần lưu sau đẩy cả hai lên Drive (27/09). Workspace của bản Drive không bao giờ bị bỏ.
  */
-export function danhSachSauKhoiPhuc(dangCo, tuDrive, thayThe = false) {
-  const giu = thayThe ? [...tuDrive] : dangCo.concat(tuDrive.filter((id) => !dangCo.includes(id)));
-  return { giu, bo: dangCo.filter((id) => !giu.includes(id)) };
+export function danhSachSauKhoiPhuc(dangCo, tuDrive, boDuoc = []) {
+  const bo = dangCo.filter((id) => boDuoc.includes(id) && !tuDrive.includes(id));
+  return { giu: dangCo.filter((id) => !bo.includes(id)).concat(tuDrive.filter((id) => !dangCo.includes(id))), bo };
 }
 
+/** Tiêu đề các tài liệu mẫu app tự tạo trong "Không gian làm việc mẫu" (so sau khi bỏ khoảng trắng hai đầu). */
+const TIEU_DE_MAU = new Set(['Bắt đầu sử dụng', 'Cách sử dụng Thư mục và Thẻ']);
+
+/**
+ * Chỉ có tài liệu mẫu: mọi dòng meta.pages mang tiêu đề mẫu. KHÔNG dùng updatedDate: app tự mở "Bắt đầu sử dụng"
+ * ngay khi tạo workspace nên nó có updatedDate dù chưa ai sửa (đo 27/09).
+ * ponytail: sửa nội dung một tài liệu mẫu mà giữ nguyên tiêu đề thì vẫn tính là mẫu; phần sửa đó chỉ còn trong
+ * bản sao lưu chụp trước khi ghi đè. Muốn chặt hơn thì so nội dung với bản mẫu gốc.
+ */
+export const chiCoTaiLieuMau = (pages) =>
+  Array.isArray(pages) && pages.every((p) => TIEU_DE_MAU.has(String(p?.title ?? '').trim()));
+
+let napYjs = null;
+/** Workspace trên máy chỉ chứa tài liệu mẫu? Đọc hỏng thì trả false: không chắc thì giữ lại. */
+export async function laKhongGianMau(wsId) {
+  try {
+    const Y = await (napYjs ||= import('./vendor/yjs-gop.mjs'));
+    const db = await req(indexedDB.open(dbName(wsId)));
+    let bins;
+    try { bins = await binsCuaDoc(db, wsId); } finally { db.close(); }
+    if (!bins?.length) return false;
+    const d = new Y.Doc();
+    try {
+      Y.applyUpdate(d, convertDocumentUpdate(bins.length === 1 ? bins[0] : Y.mergeUpdates(bins)).bytes);
+      return chiCoTaiLieuMau(d.getMap('meta').get('pages')?.toJSON());
+    } finally { d.destroy(); }
+  } catch (e) {
+    console.warn(`[drive-sync] không đọc được workspace ${wsId}, giữ lại`, e);
+    return false;
+  }
+}
+
+/**
+ * thayThe: máy CHƯA TỪNG đồng bộ chọn "Lấy bản trên Drive". Workspace chỉ có trên máy mà chỉ chứa tài liệu mẫu thì
+ * bỏ; workspace có tài liệu người dùng tự viết thì giữ và hợp nhất như thường. Workspace bị bỏ đã nằm trong bản sao
+ * lưu chụp trước khi ghi đè (saoLuuTruocKhiGhiDe).
+ */
 export async function restore(payload, { thayThe = false } = {}) {
   payload = await prepareRestore(payload);
+  const tuDrive = payload.workspaces.map((w) => w.id);
+  // Đọc TRƯỚC khi ghi: workspace chỉ có trên máy không bị restore đụng tới, nhưng đọc sớm cho chắc.
+  const boDuoc = [];
+  if (thayThe) {
+    for (const id of workspaceIds()) if (!tuDrive.includes(id) && await laKhongGianMau(id)) boDuoc.push(id);
+  }
   const tong = payload.workspaces.length;
   let xong = 0;
   for (const ws of payload.workspaces) {
@@ -366,7 +408,7 @@ export async function restore(payload, { thayThe = false } = {}) {
   // HỢP nhất chứ không thay thế: một workspace chỉ có trên máy này và chưa từng
   // được đồng bộ vẫn phải còn trong danh sách, nếu không nó biến mất khỏi thanh bên
   // và người dùng không kỹ thuật không còn đường nào mở lại.
-  const { giu, bo } = danhSachSauKhoiPhuc(workspaceIds(), payload.workspaces.map((w) => w.id), thayThe);
+  const { giu, bo } = danhSachSauKhoiPhuc(workspaceIds(), tuDrive, boDuoc);
   localStorage.setItem(LS.workspaceList, JSON.stringify(giu));
   for (const ws of payload.workspaces) {
     if (ws.info) localStorage.setItem(LS.workspaceInfo(ws.id), ws.info);
