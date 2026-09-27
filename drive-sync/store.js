@@ -326,7 +326,18 @@ export async function prepareRestore(payload) {
   return payload;
 }
 
-export async function restore(payload) {
+/**
+ * Danh sách workspace sau khi phục hồi. Mặc định HỢP nhất (xem restore). thayThe: máy CHƯA TỪNG đồng bộ chọn
+ * "Lấy bản trên Drive" thì chỉ giữ workspace của bản Drive. Mỗi trình duyệt mới tự tạo một "Không gian làm việc
+ * mẫu" mã ngẫu nhiên; hợp nhất thì máy có hai không gian cùng tên và lần lưu sau đẩy cả hai lên Drive (27/09).
+ * Workspace bị bỏ đã nằm trong bản sao lưu chụp trước khi ghi đè (saoLuuTruocKhiGhiDe).
+ */
+export function danhSachSauKhoiPhuc(dangCo, tuDrive, thayThe = false) {
+  const giu = thayThe ? [...tuDrive] : dangCo.concat(tuDrive.filter((id) => !dangCo.includes(id)));
+  return { giu, bo: dangCo.filter((id) => !giu.includes(id)) };
+}
+
+export async function restore(payload, { thayThe = false } = {}) {
   payload = await prepareRestore(payload);
   const tong = payload.workspaces.length;
   let xong = 0;
@@ -355,14 +366,18 @@ export async function restore(payload) {
   // HỢP nhất chứ không thay thế: một workspace chỉ có trên máy này và chưa từng
   // được đồng bộ vẫn phải còn trong danh sách, nếu không nó biến mất khỏi thanh bên
   // và người dùng không kỹ thuật không còn đường nào mở lại.
-  const dangCo = workspaceIds();
-  const hopNhat = dangCo.concat(
-    payload.workspaces.map((w) => w.id).filter((id) => !dangCo.includes(id))
-  );
-  localStorage.setItem(LS.workspaceList, JSON.stringify(hopNhat));
+  const { giu, bo } = danhSachSauKhoiPhuc(workspaceIds(), payload.workspaces.map((w) => w.id), thayThe);
+  localStorage.setItem(LS.workspaceList, JSON.stringify(giu));
   for (const ws of payload.workspaces) {
     if (ws.info) localStorage.setItem(LS.workspaceInfo(ws.id), ws.info);
   }
+  // Danh sách đã đúng trước khi xoá: lỡ xoá hỏng thì chỉ sót một DB mồ côi ngoài danh sách, không ai mở tới.
+  // KHÔNG chờ: app đang mở chính DB này nên lệnh xoá bị chặn (onblocked) tới khi trang tải lại đóng kết nối.
+  for (const id of bo) {
+    localStorage.removeItem(LS.workspaceInfo(id));
+    indexedDB.deleteDatabase(dbName(id)).onerror = (e) => console.warn(`[drive-sync] chưa xoá được workspace cũ ${id}`, e);
+  }
+  return { giu, bo };
 }
 
 async function validateRestoreTarget(ws) {

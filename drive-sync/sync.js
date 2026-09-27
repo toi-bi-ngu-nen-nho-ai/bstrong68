@@ -261,6 +261,9 @@ async function pullFromDrive({ confirmed = false } = {}) {
   if (!confirmed && readState()?.fileId === latest.id) return;
   // Đây mới là chỗ thật sự cần nội dung tệp.
   const payload = await downloadJson(token0, latest.id);
+  // Máy chưa từng đồng bộ: bản Drive THAY hẳn dữ liệu máy (không hợp nhất), nếu không "Không gian làm việc mẫu"
+  // máy tự tạo nằm cạnh bản Drive và lần lưu sau đẩy cả hai lên (27/09). Đã sao lưu máy này ngay bên dưới.
+  const thayThe = !readState()?.fileId;
 
   // BẮT BUỘC: sao lưu bản đang có trên máy lên Drive TRƯỚC khi ghi đè nó.
   // Nếu sao lưu thất bại thì dừng hẳn, thà không đồng bộ còn hơn mất dữ liệu.
@@ -275,8 +278,9 @@ async function pullFromDrive({ confirmed = false } = {}) {
   }
 
   setStatus('Đang tải dữ liệu từ Drive...');
+  let boDi = [];
   try {
-    await restore(payload);
+    boDi = (await restore(payload, { thayThe }))?.bo || [];
   } catch (e) {
     if (e?.code === 'BSTR_BACKUP_INVALID') {
       console.error('[drive-sync] bản sao lưu không qua kiểm tra đầu vào', e);
@@ -303,7 +307,9 @@ async function pullFromDrive({ confirmed = false } = {}) {
   // Sau khi tải lại, start() báo một lần "Đã lấy bản … về máy này: N tài liệu": người dùng vừa qua lúc căng nhất,
   // cần thấy dữ liệu đã về đủ.
   try { sessionStorage.setItem(DA_KHOI_PHUC, JSON.stringify({ savedAt: payload.savedAt, soTaiLieu: docCount(payload) })); } catch {}
-  location.reload();
+  // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
+  if (boDi.length) location.replace('/');
+  else location.reload();
 }
 
 const DA_KHOI_PHUC = 'bstr-drive-da-khoi-phuc';
