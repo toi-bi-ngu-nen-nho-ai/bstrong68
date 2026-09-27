@@ -1,0 +1,1 @@
+"use strict";(globalThis.rspackChunk_bstr_monorepo=globalThis.rspackChunk_bstr_monorepo||[]).push([[2363],{75446(n,e,o){o.r(e);var a=o(74848),r=o(57078),s=o(96540),p=o(47101);o.d(e,{},{Component:()=>{let{jumpToIndex:n}=(0,p.PC)(),e=(0,s.useCallback)(()=>{n(p.Q$.REPLACE)},[n]);return(0,a.jsx)(r.Hp,{onOpenBstr:e})}})}}]);

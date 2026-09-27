@@ -1,0 +1,1 @@
+"use strict";(globalThis.rspackChunk_bstr_monorepo=globalThis.rspackChunk_bstr_monorepo||[]).push([[8636],{11561(o,n,r){function a(o,n){if(!o)throw Error("Invariant failed")}r.d(n,{A:()=>a})}}]);

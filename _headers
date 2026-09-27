@@ -1,0 +1,30 @@
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Chi trang HTML: no-transform de Cloudflare khong tu chen beacon.min.js (RUM, static.cloudflareinsights.com).
+# KHONG dat cho /*: no-transform tat luon nen brotli, JS nang gap 5 lan.
+/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/workspace/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/share/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/404
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/expired
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/redirect-proxy
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/open-app/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/template/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/theme-editor
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/clipper/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/privacy
+  Cache-Control: public, max-age=0, must-revalidate, no-transform

@@ -1,0 +1,41 @@
+export const CONFIG = {
+  // Client ID OAuth của Google Cloud (loại Web application)
+  clientId: '379778952109-38d1cm8b3jvruao1rplgftq99d9lccrk.apps.googleusercontent.com',
+  scope: 'https://www.googleapis.com/auth/drive.file',
+  // Worker giữ refresh token (services/dang-nhap). Phải CÙNG SITE với web để cookie SameSite=Strict đi kèm:
+  // web thật dùng tên miền phụ; localhost:1000 dùng `wrangler dev` ở localhost:8787 (cổng khác vẫn cùng site).
+  loginUrl: globalThis.location?.hostname === 'localhost' ? 'http://localhost:8787' : 'https://dang-nhap.bstrong68.com',
+  folderName: 'Bác sĩ Trọng',
+  filePrefix: 'bstr-workspace-',
+  // Bản sao lưu chụp TRƯỚC khi ghi đè phải mang tiền tố riêng, nếu không nó
+  // sẽ trở thành "bản mới nhất" và app lại mời khôi phục đúng dữ liệu vừa bỏ.
+  backupPrefix: 'bstr-backup-',
+  // Tệp dò của tuKiemTra() — không được trùng/bắt đầu bằng filePrefix hay
+  // backupPrefix, nếu không nó sẽ lẫn vào danh sách phiên bản hoặc sao lưu thật.
+  selfTestPrefix: 'bstr-selftest-',
+  // Tệp gói chia sẻ MỘT tài liệu (chiaSeTaiLieu). Cũng phải là tiền tố riêng,
+  // không bắt đầu bằng filePrefix/backupPrefix — nếu không nó lọt vào danh sách
+  // phiên bản, bị tải về ghi đè cả workspace hoặc bị prune xoá mất.
+  sharePrefix: 'bstr-chia-se-',
+  // Khoá API trình duyệt (Browser key) để người NHẬN tải gói chia sẻ công khai
+  // mà không cần đăng nhập Google. Chủ sở hữu tự dán vào sau. Rỗng => nhanTaiLieu
+  // báo lỗi rõ ràng thay vì gọi mạng hỏng.
+  apiKey: 'AIzaSyCL9O5aH9MZrCZ38Iw6iz6NoNt9vAKFbDA',
+  keepVersions: 5,
+  keepBackups: 3,
+  autoSaveMs: 2 * 60 * 1000,
+  signInTimeoutMs: 120 * 1000,
+  syncStores: ['snapshots', 'updates', 'blobs', 'blobData', 'clocks', 'peerClocks'],
+  // Id tài liệu mẫu ("Bắt đầu sử dụng", "Cách sử dụng Thư mục và Thẻ") — giữ
+  // trên máy, KHÔNG BAO GIỜ đồng bộ lên Drive. Rỗng cho tới khi chủ sở hữu
+  // chạy dongGoiTaiLieuMau(ids) rồi dán ids vào đây.
+  taiLieuMauIds: [],
+};
+
+export const LS = {
+  workspaceList: 'bstr-local-workspace',
+  workspaceInfo: (id) => `global-cache:workspace-information:${id}`,
+  signedIn: 'bstr-drive-sync:signed-in',
+  state: 'bstr-drive-sync:state',
+  deviceId: 'bstr-drive-sync:device-id',
+};

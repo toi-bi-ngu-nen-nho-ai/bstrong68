@@ -1,0 +1,11 @@
+node_modules/
+*.bak
+server.log
+.wrangler/
+.claude/
+
+# Không đẩy lên GitHub
+DESIGN.md
+PRODUCT.md
+branding-src/
+services/

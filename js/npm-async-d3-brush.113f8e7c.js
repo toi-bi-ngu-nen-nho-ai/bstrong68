@@ -1,0 +1,1 @@
+"use strict";(globalThis.rspackChunk_bstr_monorepo=globalThis.rspackChunk_bstr_monorepo||[]).push([[1487],{64825(n,e,s){s(34795);let{abs:a,max:o,min:p}=Math;function r(n){return{type:n}}["w","e"].map(r),["n","s"].map(r),["n","w","e","s","nw","ne","sw","se"].map(r)}}]);

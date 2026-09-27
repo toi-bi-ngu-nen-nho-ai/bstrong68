@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="vi" dir="ltr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=auto">
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <title>Bác sĩ Trọng</title>
+
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" sizes="192x192" href="/favicon-192.png">
+    <link rel="shortcut icon" href="/favicon.ico?v=2">
+    <meta name="emotion-insertion-point" content="">
+    <meta property="description" content="Bác sĩ Trọng - hỗ trợ lâm sàng, công cụ tự học và ghi nhớ hiệu quả">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Bác sĩ Trọng">
+    <meta name="twitter:description" content="Bác sĩ Trọng - hỗ trợ lâm sàng, công cụ tự học và ghi nhớ hiệu quả">
+    <meta property="og:title" content="Bác sĩ Trọng">
+    <meta property="og:type" content="website">
+    <meta property="og:description" content="Bác sĩ Trọng - hỗ trợ lâm sàng, công cụ tự học và ghi nhớ hiệu quả">
+  <meta content="/" name="env:publicPath"><link href="/styles.1056fe91.css?bstr-font=1&bstr-f5=13" rel="stylesheet"><link href="/vendor.eb9f8254.css?bstr-f5=13" rel="stylesheet"><link href="/intro.css" rel="stylesheet">
+  <style>
+    /* Nền trang theo theme: html trong suốt (bundle đặt :root transparent, nên cần html:root) thì Safari (iPhone) tô vùng thanh trạng thái và thanh địa chỉ bằng màu đen mặc định. */
+    html:root { background: var(--bstr-v2-layer-background-primary, #ffffff); }
+    /* Khổ điện thoại (<=640px). Hàng đầu trang của danh sách tài liệu, bộ sưu tập, thẻ cao cố định 52px
+       với contain:strict, nên nút "Hiển thị" và "Tài liệu mới" bị đẩy ra ngoài màn hình: cho hàng này cao
+       theo nội dung và cho nhóm nút xuống dòng. Mỗi dòng tài liệu có hai cột ngày rộng cố định, đẩy nút sao
+       và menu ra ngoài: ẩn hai cột đó (xem ngày trong "Thông tin" của tài liệu). */
+    @media (max-width: 640px) {
+      ._5hzb681 { height: auto; min-height: 52px; contain: layout paint; padding-top: 6px; padding-bottom: 6px; }
+      /* Khi nhóm nút xuống dòng, hàng cao gấp đôi: hai nút sidebar (32px) canh giữa dòng tab (26px), không lơ lửng giữa hai dòng. */
+      ._5hzb681 { align-items: flex-start; }
+      ._5hzb681 > ._104lr7r0, ._5hzb681 > ._5hzb684 { margin-top: -3px; }
+      ._5hzb685 { height: auto; }
+      ._5hzb685 > ._1hg94km0 { height: auto; flex-wrap: wrap; row-gap: 6px; }
+      li.zo4ozt3 .re5632 { display: none; }
+    }
+    /* Cột soạn thảo co theo khung nhìn. Khung cuộn của trang ép div bọc editor thành display:table (!important), nên
+       bảng nở theo chiều rộng tối đa của cột (944px) thay vì co lại: ở 375px, hoặc ở 1024px khi mở sidebar, chữ
+       bị cắt bên phải. display:block cho cột co về đúng khung; khối rộng (bảng, cơ sở dữ liệu) vẫn tự cuộn ngang
+       bên trong. Khổ hẹp dùng lề hai bên nhỏ như bản chia sẻ công khai của chính editor. */
+    .bstr-page-viewport._1n876y33 > :first-child:has(> [data-bstr-editor-container]) { display: block !important; }
+    @media (max-width: 800px) {
+      .editor-wrapper.page-mode { --bstr-editor-side-padding: 24px; }
+    }
+    @media (max-width: 480px) {
+      .editor-wrapper.page-mode { --bstr-editor-side-padding: 16px; }
+    }
+    /* Cột ngày của danh sách tài liệu rộng 60px theo chữ tiếng Anh ("2h ago"), nên "3 phút trước" luôn bị cắt thành
+       "3 phút tr…". 84px vừa câu dài nhất ("12 phút trước"). Khổ <=640px vẫn ẩn hai cột này (ở trên). */
+    .re5632 { width: 84px; }
+    /* Bảng trắng khổ hẹp: thước zoom nằm góc trái-dưới (cách đáy 20px) đè lên thanh công cụ ở giữa khi màn hình dưới
+       khoảng 500px. Đẩy thước lên trên thanh công cụ. */
+    @media (max-width: 520px) {
+      :root { --bstr-bangve-zoom-toolbar-bottom: 92px; }
+    }
+    /* Dòng lặng "Đã lưu Drive lúc HH:MM" trong menu Không gian làm việc (drive-sync/sync.js moTaLanLuu). */
+    .bstr-drive-saved { padding: 6px 12px 8px; font-size: 12px; line-height: 20px; color: var(--bstr-v2-text-secondary); }
+    /* Import dialog: drop "suggest another format" tip line */
+    ._1ec1s8g4 { display: none !important; }
+    /* Share tab "Sao chép liên kết": drop the page/bangve/block format-variant
+       dropdown next to it. Drive sharing (script below) only ever produces one
+       link per whole document, so those variants don't apply here. The main
+       button already has flex:1 on its row, so it fills the space on its own. */
+    [data-testid="share-menu-copy-link-button"] { display: none !important; }
+    /* Workspace preference: drop "Reset Sync" row */
+    [data-testid="reset-sync-status"] { display: none !important; }
+    /* Workspace switcher dropdown: "Đăng nhập" row's account icon rendered at
+       24px (shared prefixIconClassName with the "Tạo không gian làm việc" row
+       below it), visibly bulkier than its sibling "Lưu trữ cục bộ" row above.
+       Shrink to 20px, scoped to just this row's own data-testid so the
+       "new workspace" plus icon (same shared class) is untouched.
+       Two things this row's own layout couples together, both handled here:
+       - Vertical: the icon's wrapper div (prefixIconClassName "_1068mtz1") is
+         display:flex but align-items:normal, so a smaller <svg> pins to the
+         wrapper's top edge instead of centering — fixed by centering the flex
+         box, not by shrinking the box itself.
+       - Horizontal: that same wrapper's own width sets how far the label text
+         sits to its right (wrapper width + a fixed 12px gap) — this row has no
+         fixed icon "slot" the way "Lưu trữ cục bộ" does. Shrinking the wrapper
+         (rather than just the icon inside it) pulls the text left and out of
+         column with "Tạo không gian làm việc" below it. So: keep the wrapper
+         at its 24px box — only the <svg> inside shrinks to 20px —
+         and center it there, instead of resizing the box. Any future resize
+         of this icon should go through the <svg> rule alone, for the same
+         reason: touching the wrapper's box size is what breaks the column. */
+    [data-testid="workspace-google-sign-in"] svg { width: 20px !important; height: 20px !important; }
+    [data-testid="workspace-google-sign-in"] ._1068mtz1 { display: flex !important; align-items: center !important; justify-content: center !important; }
+    /* Settings->Editor preview thumbnails (Note/Text/Mindmap/...): caption badge sat inside the
+       clipped preview box and got overlapped by content that fills close to the bottom edge.
+       Push it below the box instead — clearance from the box's own margin-bottom. */
+    ._1owwggq4 { margin-bottom: 48px !important; }
+    ._1owwggq8 { bottom: -32px !important; }
+    /* Sidebar workspace-name text: 14px/22px.
+       Alignment: user wants it top-aligned with the avatar instead of vertically centered.
+       ._1wvntnn0 looked like the row wrapper but isn't the flex container pairing avatar+text —
+       verified via actual DOM ancestor walk that ._1wvntnn1 (align-items:center flex, wraps just
+       the avatar+text pair) is the real one; overriding ._1wvntnn0 measured no effect at all. */
+    ._1wvntnn1 { align-items: flex-start !important; }
+    /* Sidebar workspace-name text: was single-line (white-space:nowrap + text-overflow:ellipsis)
+       so a long name got cut with "..." instead of wrapping. Switch to a 2-line clamp instead.
+       This needs the whole ancestor chain's fixed heights (the same zero-slack row-height
+       budget pattern hit before with avatar size) freed to auto, or line 2 gets clipped by an
+       ancestor's overflow:hidden even though the text node itself has room to wrap. */
+    ._1wvntnn8 {
+      white-space: normal !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      height: auto !important;
+      max-height: 44px !important;
+    }
+    ._1wvntnn7 { height: auto !important; overflow: visible !important; }
+    ._1wvntnn5 { height: auto !important; }
+    ._1wvntnn4[data-dense="true"] { height: auto !important; --h: auto !important; }
+    ._1wvntnnc { height: auto !important; }
+    ._1wvntnn0 { height: auto !important; min-height: 48px !important; overflow: visible !important; }
+    /* .sa42nx0 is the OUTER row wrapping the workspace card above (fixed height:42px,
+       align-items:center, per vendor CSS). The 2-line-name fix above made the card itself grow
+       to ~52px, but this ancestor wrapper was missed - align-items:center then centers the
+       taller card inside the still-42px box, so it pokes out ~5px above AND ~5px below,
+       overlapping the search/+-button row underneath it. Free the wrapper to auto too so it
+       grows with its child instead of clipping/overflowing it. */
+    .sa42nx0 { height: auto !important; min-height: 42px !important; }
+    /* Same row, horizontal alignment: the card's highlight box didn't line up with the nav
+       rows' (Tìm kiếm / Tất cả tài liệu / Nhật ký / Cài đặt) highlight boxes. Each nav row
+       paints its hover/active highlight bleeding 8px past its own box on both sides
+       (.qkmvqy1[data-collapsible=false]:is([data-active=true],:hover) -> width:calc(100% + 16px)
+       + translateX(-8px)), landing at -8/+8. The card row instead bleeds only 6px per side
+       (align-self:center + width:calc(100% + 12px)) and then eats 6px back on the right via
+       padding-right, so the card ended up 2px narrow on the left and 8px on the right.
+       Match the nav rows' ±8px bleed exactly so all four edges line up. */
+    .sa42nx0 { width: calc(100% + 16px) !important; padding-right: 0 !important; }
+    /* Sidebar workspace-name row also stacks a second, normally-invisible "Đang đồng bộ..."
+       (sync status) row underneath the name (._1wvntnn7[data-type="events"], crossfades via
+       opacity with the name row through a data-active attribute, so the switcher doesn't jump
+       when a real sync starts). That row's own height:var(--h) used to resolve to a small fixed
+       22px (matching the old single-line name height) BEFORE the 2-line-wrap fix above, so the
+       dead reserved space beneath the name was barely noticeable. Once the name can grow to
+       44px for 2 lines, that same reserved 22px sits below it as an obvious dead gap, making the
+       whole button look oversized. Collapse whichever of the two rows is currently inactive
+       (opacity:0) to height:0 instead of leaving it reserved, since data-active is never toggled
+       true in this single-button context anyway (nothing here currently makes the sync row show). */
+    ._1wvntnn4[data-active="false"] ._1wvntnn7[data-type="events"] { height: 0 !important; }
+    ._1wvntnn4[data-active="true"] ._1wvntnn7[data-type="normal"] { height: 0 !important; }
+    /* "Tất cả tài liệu" header tabs (Tài liệu/Bộ sưu tập/Thẻ): default white-space:normal lets
+       flexbox shrink each tab's min-content down to its narrowest single word once the header
+       gets too narrow to fit both the tabs and the view/display icon buttons on their right.
+       The icon-button group can't shrink below its own icons' size, so 100% of the deficit lands
+       on the tabs and they wrap word-by-word into a squished, overlapping stack. nowrap makes a
+       tab's min-content its full label width, so the icon-button group absorbs the squeeze
+       instead - preserving the compact toolbar behavior at narrow widths. */
+    .g02o6a1 { white-space: nowrap !important; }
+    /* Right sidebar Journal panel: "Đặt mẫu cho Nhật ký" template-picker card (headline + its
+       "Chọn" button) sits right under the calendar. display:none removes it from flow entirely
+       (no dead gap left behind) rather than just hiding the text, since the whole card - not
+       just the banner line - was asked to go. */
+    .w44g531 { display: none !important; }
+    /* Right sidebar Journal panel: the persistent "select journal template" icon button
+       (._4wovpc0, its own dropdown-trigger button, and the dropdown menu it opens) that sits
+       tucked in the bottom-left corner below the created/updated doc list. Same underlying
+       journal-template feature whose onboarding banner (.w44g531 above) was already removed -
+       this is the remaining always-visible trigger for it. display:none drops it from flow. */
+    ._4wovpc0 { display: none !important; }
+    /* Bảng Cài đặt trên điện thoại (chủ dự án thử trên iPhone X, 25/09). Bản web chỉ có bố cục máy tính: hộp thoại bị
+       gán cứng calc(100dvw - 100px) (275px ở khổ 375px), cột mục trái chiếm 25% nên tên mục cắt còn "G.", "T.", và mỗi
+       hàng .two-col đặt nhãn cạnh điều khiển nên nhóm chọn 250px bóp nhãn thành mỗi chữ một dòng rồi tràn ra mép phải.
+       Dưới 640px: hộp phủ toàn màn hình; cột mục thành dải ngang cuộn được ở trên (tên nhóm, rồi các mục, đủ chữ); hàng
+       có nhóm chọn hoặc nút menu xếp nhãn trên điều khiển; hàng có công tắc giữ công tắc bên phải. */
+    @media screen and (max-width: 640px) {
+      [data-testid="setting-modal"] {
+        width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important;
+        border-radius: 0 !important; flex-direction: column !important;
+      }
+      [data-testid="setting-modal"] > [data-testid="modal-close-button"] { top: 12px; right: 8px; width: 40px; height: 40px; }
+      [data-testid="settings-sidebar"] {
+        width: auto !important; max-width: none !important; height: auto !important; overflow: visible !important;
+        gap: 8px !important; padding: 16px 0 8px !important; border-bottom: 1px solid var(--bstr-border-color);
+      }
+      [data-testid="settings-sidebar"] > ._13cen4k1 { padding: 0 56px 0 16px; }
+      [data-testid="settings-sidebar"] > ._1gwtbhl0 { height: auto; }
+      [data-testid="settings-sidebar"] ._1gwtbhl2 {
+        overflow: auto hidden !important; white-space: nowrap; scrollbar-width: none; overscroll-behavior-x: contain;
+      }
+      [data-testid="settings-sidebar"] ._1gwtbhl2::-webkit-scrollbar { display: none; }
+      [data-testid="settings-sidebar"] ._1gwtbhl2 > :first-child > * { display: inline-flex !important; vertical-align: top; }
+      [data-testid="settings-sidebar"] ._13cen4ka { flex-direction: row; align-items: center; gap: 4px; padding: 0 8px 0 16px; }
+      [data-testid="settings-sidebar"] ._13cen4ka + ._13cen4ka { padding-left: 8px; }
+      [data-testid="settings-sidebar"] ._13cen4k2 { padding: 0 4px 0 0; white-space: nowrap; font-size: var(--bstr-font-xs); }
+      [data-testid="settings-sidebar"] ._13cen4k3 { flex-direction: row; }
+      [data-testid="settings-sidebar"] ._13cen4k4 { height: 36px; padding: 0 12px; }
+      [data-testid="settings-sidebar"] ._13cen4k7 { overflow: visible; }
+      [data-testid="setting-modal"] > ._1gwtbhl0 { flex: 1 1 auto; min-height: 0; }
+      [data-testid="setting-modal-content"] { padding: 20px 16px 32px !important; }
+      [data-testid="setting-modal-content"] ._1pqptjr3.two-col:not(:has(> .right-col input[type="checkbox"])) {
+        flex-direction: column; align-items: stretch; gap: 12px;
+      }
+      [data-testid="setting-modal-content"] ._1pqptjr3.two-col:not(:has(> .right-col input[type="checkbox"])) > .left-col { max-width: 100%; }
+      [data-testid="setting-modal-content"] ._1pqptjr3.two-col:not(:has(> .right-col input[type="checkbox"])) > .right-col { max-width: 100%; padding-left: 0; justify-content: flex-start; }
+      [data-testid="setting-modal-content"] ._1pqptjr3.two-col > .right-col > [role="radiogroup"] { width: 100% !important; max-width: 100%; }
+      /* Nhóm chọn dài hơn khổ (5 hình của bảng trắng, 468px): cuộn ngang trong chính nó, giữ dáng thanh chọn liền khối. */
+      [data-testid="setting-modal-content"] [role="radiogroup"] { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+      [data-testid="setting-modal-content"] ._1pqptjr3.two-col:has(> .right-col input[type="checkbox"]) > .left-col { flex-shrink: 1; min-width: 0; }
+    }
+  </style>
+  </head>
+
+  <body>
+    <div id="bstrIntroOverlay" role="presentation" aria-hidden="true">
+      <div id="bstrIntroCover">
+        <div class="bstr-intro-center">
+          <div id="introLogo" style="font-family: var(--font-baloo); font-size: clamp(2.75rem, min(12vw, 17vh), 6.5rem); line-height: normal; visibility: hidden;">
+            <span id="textBacSi" class="bstr-intro-inline" style="color: var(--c-intro-ink); transform-origin: center; padding-right: 0.1em; -webkit-font-smoothing: antialiased; -webkit-backface-visibility: hidden; backface-visibility: hidden;">Bác sĩ</span>
+            <span class="bstr-intro-tgroup">
+              <span id="letterT" class="bstr-intro-inline" style="color: var(--c-intro-blue); transform-origin: center; -webkit-font-smoothing: antialiased; -webkit-backface-visibility: hidden; backface-visibility: hidden;">T</span>
+              <span id="textRong" class="bstr-intro-inline" style="color: var(--c-intro-ink); transform-origin: center; -webkit-font-smoothing: antialiased; -webkit-backface-visibility: hidden; backface-visibility: hidden;">rọng</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="app" data-version="1.0.0"></div>
+
+
+<script type="importmap">{"imports":{"lib0/":"/drive-sync/vendor/lib0/","/bstr-migrate.js":"/bstr-migrate.js?bstr-v2=2","/bstr-data.js":"/bstr-data.js?bstr-v2=2","/bstr-compat.js":"/bstr-compat.js?bstr-v2=2","/bstr-backup.js":"/bstr-backup.js?bstr-v2=2","/drive-sync/sync.js":"/drive-sync/sync.js?bstr-login=7","/drive-sync/ui.js":"/drive-sync/ui.js?bstr-login=5","/drive-sync/auth.js":"/drive-sync/auth.js?bstr-login=6"}}</script>
+<!-- bstr-preload -->
+<link rel="preload" as="script" fetchpriority="low" href="/js/runtime.633fb626.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-rxjs.2a651a07.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/i18n.d53559be.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/i18n-langs.i18n-completenesses.b9eef0d3.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-bstrblocks.912c9df9.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-react.d249c215.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-jotai.ff53f772.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-emotion.06ccdb5b.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/vendor.9a820b5d.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/index.efdf77b2.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<!-- /bstr-preload -->
+<script src="/js/global-error-handler.js"></script>
+<script id="bstr-bundles" type="application/json">["/js/runtime.633fb626.js","/js/npm-rxjs.2a651a07.js","/js/i18n.d53559be.js","/js/i18n-langs.i18n-completenesses.b9eef0d3.js","/js/npm-bstrblocks.912c9df9.js","/js/npm-react.d249c215.js","/js/npm-jotai.ff53f772.js","/js/npm-emotion.06ccdb5b.js","/js/vendor.9a820b5d.js","/js/index.efdf77b2.js"]</script>
+<script type="module" src="/bstr-bootstrap.js?bstr-login=18"></script>
+<script>
+(function () {
+  // Liên kết nhận tài liệu <app>/?nhan=<id tệp Drive> (drive-sync/nhan.js). Router của app bỏ query ngay
+  // khi chuyển sang /workspace/…, nên cất id lại trước khi bundle chạy và xoá tham số khỏi thanh địa chỉ.
+  try {
+    var nhan = new URLSearchParams(location.search).get('nhan');
+    if (nhan) {
+      sessionStorage.setItem('bstr-drive-sync:nhan', nhan);
+      var url = new URL(location.href);
+      url.searchParams.delete('nhan');
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    }
+  } catch (e) {}
+  // Lần đầu vào (25/09 tối): máy chưa có workspace thì app tải gói tài liệu mẫu (639 KB) sau ~1,3 s khởi động, lúc đó
+  // mạng đang rảnh. Tải sẵn ngay khi bundle index tải xong (không tranh băng thông với bundle); fetch() của app cùng
+  // URL, chế độ CORS nên dùng lại bản tải sẵn. URL gói phải khớp đúng URL app gọi.
+  try {
+    var dsWorkspace = localStorage.getItem('bstr-local-workspace');
+    if ((!dsWorkspace || dsWorkspace === '[]') && window.PerformanceObserver) {
+      var theoDoi = new PerformanceObserver(function (ds) {
+        if (!ds.getEntries().some(function (e) { return e.name.indexOf('/js/index.efdf77b2.js') >= 0; })) return;
+        theoDoi.disconnect();
+        var goi = document.createElement('link');
+        goi.rel = 'preload'; goi.as = 'fetch'; goi.crossOrigin = 'anonymous';
+        goi.href = '/assets/onboarding.27900f54.zip?bstr-schema=1&bstr-mau=4';
+        document.head.appendChild(goi);
+      });
+      theoDoi.observe({ type: 'resource', buffered: true });
+    }
+  } catch (e) {}
+  // Share popover's "Sao chép liên kết" button: the default click handler
+  // would just copy a dead local URL (no server here to host a public share
+  // page). Intercept ahead of both React's delegated listener AND Radix's
+  // own outside-pointerdown close — the popover's dismissable layer closes
+  // (unmounting this button) on 'pointerdown', before 'click' ever fires, so
+  // listening for 'click' here let real mouse clicks fall through silently.
+  document.addEventListener('pointerdown', function (event) {
+    var btn = event.target.closest && event.target.closest('._1gasstp2');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.bstrDriveSync?.chiaSeTaiLieuHienTai?.();
+  }, true);
+})();
+</script>
+<script src="/js/gsap.min.js"></script>
+<script src="/intro.js?bstr-f5=4"></script>
+</body></html>

@@ -1,0 +1,1 @@
+"use strict";(globalThis.rspackChunk_bstr_monorepo=globalThis.rspackChunk_bstr_monorepo||[]).push([[6105],{61780(a){a.exports=JSON.parse('{"ar":89,"ca":86,"da":3,"de":96,"el-GR":85,"en":100,"es-AR":85,"es-CL":86,"es":85,"fa":85,"fr":89,"hi":1,"it":86,"ja":85,"kk":92,"ko":86,"nb-NO":42,"pl":86,"pt-BR":85,"ru":87,"sv-SE":85,"tr":92,"uk":85,"ur":92,"zh-Hans":96,"zh-Hant":87}')}}]);
