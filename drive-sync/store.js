@@ -352,6 +352,7 @@ let napYjs = null;
 /** Workspace trên máy chỉ chứa tài liệu mẫu? Đọc hỏng thì trả false: không chắc thì giữ lại. */
 export async function laKhongGianMau(wsId) {
   try {
+    if (!(await dbExists(dbName(wsId)))) return false; // indexedDB.open sẽ tạo DB rỗng cho id mồ côi
     const Y = await (napYjs ||= import('./vendor/yjs-gop.mjs'));
     const db = await req(indexedDB.open(dbName(wsId)));
     let bins;
