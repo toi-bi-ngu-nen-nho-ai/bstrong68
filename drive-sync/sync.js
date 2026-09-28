@@ -342,6 +342,15 @@ async function gopNgay() {
     const tu = thayThe ? null : [...new Set(files.map((f) => f.appProperties?.bstrTen || 'bản lưu cũ'))].join(', ');
     const soTaiLieu = thayThe ? docCount(payload) : thongKe.taiLieuGop; // gộp: số tài liệu đổi hoặc thêm, không phải tổng
     try { sessionStorage.setItem(DA_KHOI_PHUC, JSON.stringify({ savedAt: payload.savedAt, soTaiLieu, tu })); } catch {}
+    // Task 1 (thử 28/09): app không tự hiện ảnh về muộn trong tài liệu đang mở. Tải trước ảnh của tài liệu đó (tối đa
+    // 20 giây) rồi mới tải lại trang; ảnh khác tải nền sau khi tải lại (taiAnhNen).
+    const mo = docDangMo();
+    if (mo) {
+      await Promise.race([
+        taiAnhThieu(token, await folder(), { chiTaiLieu: mo }),
+        new Promise((r) => setTimeout(r, 20000)),
+      ]).catch((e) => console.error('[drive-sync] tải trước ảnh tài liệu đang mở thất bại, sẽ tải nền', e));
+    }
     // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
     if (bo.length) location.replace('/');
     else location.reload();

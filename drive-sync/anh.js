@@ -46,9 +46,10 @@ export async function dayAnh(token, folderId) {
  * Tải các ảnh máy này cần mà chưa có (sau khi gộp hay lấy dữ liệu từ Drive), CONFIG.anhSongSong ảnh một lúc theo
  * thuTuTai; tải xong ảnh nào ghi ngay ảnh đó. baoTienDo(n, tong) sau mỗi ảnh. Ảnh không có trên Drive thì đếm vào
  * thieuTrenDrive, ảnh tải hỏng thì đếm vào loi (lần mở app sau tải tiếp).
+ * chiTaiLieu: chỉ tải ảnh của tài liệu đó (gộp xong, trước khi tải lại trang).
  */
-export async function taiAnhThieu(token, folderId, { docDangMo = null, baoTienDo = () => {} } = {}) {
-  const ds = thuTuTai(await anhThieu(), docDangMo);
+export async function taiAnhThieu(token, folderId, { docDangMo = null, baoTienDo = () => {}, chiTaiLieu = null } = {}) {
+  const ds = thuTuTai((await anhThieu()).filter((a) => !chiTaiLieu || a.docIds.includes(chiTaiLieu)), docDangMo);
   if (!ds.length) return { daTai: 0, thieuTrenDrive: 0, loi: 0 };
   const coTren = await listAnh(token, folderId);
   const coThe = ds.filter((a) => coTren.has(a.key));
