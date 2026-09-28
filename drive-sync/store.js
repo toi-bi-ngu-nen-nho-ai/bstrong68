@@ -641,5 +641,89 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs 
   }
 }
 
+// ─────────────────────────── Ảnh (tự gộp đợt 2) ───────────────────────────
+// Dữ liệu ảnh (blobData) không đi trong bản lưu: anh.js đẩy từng ảnh lên Drive thành tệp riêng và tải về ảnh còn thiếu.
+
+/** Mọi bản ghi (hay mọi khoá, cach = 'getAllKeys') của một kho; không có kho thì mảng rỗng. */
+async function tatCa(db, ten, cach = 'getAll') {
+  if (!db.objectStoreNames.contains(ten)) return [];
+  return req(db.transaction(ten, 'readonly').objectStore(ten)[cach]());
+}
+
+/** Ảnh máy này có dữ liệu: [{ wsId, key, mime }]. Chỉ đọc khoá của blobData, không đọc byte ảnh. */
+export async function anhCoDuLieu() {
+  const ra = [];
+  for (const wsId of workspaceIds()) {
+    if (!(await dbExists(dbName(wsId)))) continue;
+    const db = await req(indexedDB.open(dbName(wsId)));
+    try {
+      const mime = new Map((await tatCa(db, 'blobs')).map((b) => [b.key, b.mime || '']));
+      for (const key of await tatCa(db, 'blobData', 'getAllKeys')) ra.push({ wsId, key, mime: mime.get(key) || '' });
+    } finally {
+      db.close();
+    }
+  }
+  return ra;
+}
+
+/** Byte gốc của một ảnh trên máy; không có thì null. */
+export async function docAnh(wsId, key) {
+  if (!(await dbExists(dbName(wsId)))) return null; // indexedDB.open sẽ tạo DB rỗng cho id mồ côi
+  const db = await req(indexedDB.open(dbName(wsId)));
+  try {
+    if (!db.objectStoreNames.contains('blobData')) return null;
+    const r = await req(db.transaction('blobData', 'readonly').objectStore('blobData').get(key));
+    return r?.data ? new Uint8Array(r.data) : null;
+  } finally {
+    db.close();
+  }
+}
+
+/** Ghi byte một ảnh vừa tải về. Máy đã có ảnh này thì để nguyên (cùng khoá là cùng nội dung). Trả true nếu vừa ghi. */
+export async function ghiAnh(wsId, key, bytes) {
+  if (!(await dbExists(dbName(wsId)))) return false;
+  const db = await req(indexedDB.open(dbName(wsId)));
+  try {
+    if (!db.objectStoreNames.contains('blobData')) return false;
+    const tx = db.transaction('blobData', 'readwrite');
+    const finished = txDone(tx);
+    const os = tx.objectStore('blobData');
+    const daCo = (await req(os.getKey(key))) !== undefined;
+    if (!daCo) os.put({ key, data: bytes });
+    await finished;
+    return !daCo;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Ảnh máy này cần mà chưa có dữ liệu: bản ghi blobs chưa đánh dấu xoá mà blobData không có. Kèm tài liệu nhắc tới ảnh
+ * (quét snapshot như blobOwners) và lần sửa gần nhất của các tài liệu đó, để anh.js xếp thứ tự tải.
+ * ponytail: quét O(số tài liệu × số ảnh thiếu) như blobOwners; chỉ chạy khi có ảnh thiếu.
+ */
+export async function anhThieu() {
+  const ra = [];
+  for (const wsId of workspaceIds()) {
+    if (!(await dbExists(dbName(wsId)))) continue;
+    const db = await req(indexedDB.open(dbName(wsId)));
+    try {
+      const co = new Set(await tatCa(db, 'blobData', 'getAllKeys'));
+      const thieu = (await tatCa(db, 'blobs')).filter((b) => !b.deletedAt && !co.has(b.key)).map((b) => b.key);
+      if (!thieu.length) continue;
+      const snaps = await tatCa(db, 'snapshots');
+      const owners = blobOwners(snaps, thieu);
+      const luc = new Map(snaps.map((s) => [s.docId, +new Date(s.updatedAt || s.createdAt || 0)]));
+      for (const key of thieu) {
+        const docIds = [...owners.get(key)];
+        ra.push({ wsId, key, docIds, moiNhat: docIds.length ? Math.max(...docIds.map((d) => luc.get(d) || 0)) : null });
+      }
+    } finally {
+      db.close();
+    }
+  }
+  return ra;
+}
+
 /** encode/decode nhị phân <-> JSON — share.js dùng chung, không viết lại. */
 export { encode as maHoa, decode as giaiMa };
