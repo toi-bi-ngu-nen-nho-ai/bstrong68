@@ -230,7 +230,9 @@ async function writeWorkspace(ws) {
     try {
       for (const storeName of names) {
         const os = tx.objectStore(storeName);
-        os.clear();
+        // Ảnh là tệp riêng (tự gộp đợt 2): bản lưu không mang blobData, còn bản cũ có mang thì chỉ thêm vào. Khoá ảnh là
+        // băm nội dung nên giữ ảnh đang có trên máy không bao giờ sai; xoá là mất ảnh chưa kịp đẩy lên Drive.
+        if (storeName !== 'blobData') os.clear();
         for (const rec of ws.stores[storeName]) os.put(decode(rec));
       }
     } catch (error) {

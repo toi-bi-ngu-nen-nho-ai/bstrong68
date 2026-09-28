@@ -32,7 +32,7 @@ export const CONFIG = {
   anhSongSong: 6,
   autoSaveMs: 2 * 60 * 1000,
   signInTimeoutMs: 120 * 1000,
-  syncStores: ['snapshots', 'updates', 'blobs', 'blobData', 'clocks', 'peerClocks'],
+  syncStores: ['snapshots', 'updates', 'blobs', 'clocks', 'peerClocks'],
   // Id tài liệu mẫu ("Bắt đầu sử dụng", "Cách sử dụng Thư mục và Thẻ") — giữ
   // trên máy, KHÔNG BAO GIỜ đồng bộ lên Drive. Rỗng cho tới khi chủ sở hữu
   // chạy dongGoiTaiLieuMau(ids) rồi dán ids vào đây.

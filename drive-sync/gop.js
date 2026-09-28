@@ -83,7 +83,9 @@ function gopWorkspace(ws, khac, now) {
   if (s.clocks) s.clocks = s.clocks.filter((r) => !doi.has(r.docId)).concat([...doi].map((docId) => ({ docId, timestamp: encode(now) })));
   let anh = 0;
   for (const ten of ['blobs', 'blobData']) {
-    if (!s[ten]) continue;
+    // Tự gộp đợt 2: bản lưu mới không mang blobData (ảnh là tệp riêng trên Drive). Bản cũ của máy kia còn mang thì lấy ảnh
+    // của nó dù bản xuất của máy này không có kho đó: restore chỉ thêm ảnh, không xoá ảnh đang có.
+    if (!s[ten] && !k[ten]) continue;
     const [ra, lay] = hopTheoKhoa(s[ten], k[ten], 'key');
     s[ten] = ra;
     anh += lay;
