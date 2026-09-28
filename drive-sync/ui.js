@@ -11,7 +11,7 @@ const CSS = `
   color:var(--bstr-v2-text-primary,#141414)}
 .bstr-gs-desc{margin:0 0 20px;font-size:15px;line-height:1.55;color:color-mix(in srgb,var(--bstr-v2-text-primary,#141414) 72%,var(--bstr-v2-layer-background-overlayPanel,#fff))}
 .bstr-gs-desc b{color:var(--bstr-v2-text-primary,#141414);font-weight:600}
-/* Chỉ hộp đăng nhập căn giữa. Các hộp còn lại chữ dài, căn giữa sẽ khó đọc. */
+/* Chỉ hộp đăng nhập và màn chặn nhập căn giữa. Các hộp còn lại chữ dài, căn giữa sẽ khó đọc. */
 .bstr-gs-mid{text-align:center}
 .bstr-gs-facts{margin:0 0 20px;padding:4px 0;border-block:1px solid var(--bstr-v2-layer-insideBorder-border,#e6e6e6)}
 .bstr-gs-facts div{display:flex;justify-content:space-between;gap:16px;padding:8px 0;font-size:15px;line-height:1.4}
@@ -154,38 +154,22 @@ export function when(iso, now = Date.now()) {
   return `${esc(time)}<small>${esc(ago)}</small>`;
 }
 
-export function showConflict({ localAt, driveAt }) {
-  return openDialog(`
-      <h2 class="bstr-gs-title">Bản trên Drive mới hơn bản trên máy</h2>
-      <p class="bstr-gs-desc">Có thể bạn đã sửa tài liệu ở một máy khác. Chọn bản muốn giữ;
-        bản còn lại vẫn nằm trong danh sách phiên bản cũ trên Drive.</p>
-      <dl class="bstr-gs-facts">
-        <div><dt>Trên Drive</dt><dd>${when(driveAt)}</dd></div>
-        <div><dt>Trên máy này</dt><dd>${when(localAt)}</dd></div>
-      </dl>
-      <div class="bstr-gs-row">
-        <button class="bstr-gs-btn" data-act="take-drive">Lấy bản trên Drive<small>Sao lưu máy này trước</small></button>
-        <button class="bstr-gs-btn" data-act="keep-local">Giữ bản máy này<small>Lưu lên Drive thành bản mới</small></button>
-      </div>
-      <button class="bstr-gs-link" data-act="cancel">Để sau</button>
-    `, { escape: 'cancel', focus: 'cancel' });
-}
-
 /**
- * Máy trắng: không có gì để "giữ bản máy này", nên không được mời lựa chọn đó.
- * Một cú bấm nhầm ở đây sẽ đẩy workspace rỗng đè lên bản sao lưu thật.
+ * Màn chặn nhập trong lúc gộp hoặc lấy dữ liệu từ Drive (vài giây, xong thì trang tự tải lại): không bấm, không gõ được
+ * vào tài liệu phía sau, để không có chữ nào gõ đúng lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
  */
-export function showFirstRun({ driveAt }) {
-  return openDialog(`
-      <h2 class="bstr-gs-title">Máy này chưa có dữ liệu</h2>
-      <p class="bstr-gs-desc">Trên Google Drive của bạn có một bản lưu. Máy này chưa có tài liệu nào,
-        nên không có gì để giữ lại. Lấy dữ liệu từ Drive về máy này?</p>
-      <dl class="bstr-gs-facts">
-        <div><dt>Bản trên Drive</dt><dd>${when(driveAt)}</dd></div>
-      </dl>
-      <button class="bstr-gs-btn bstr-gs-primary" data-act="take-drive">Lấy dữ liệu từ Drive</button>
-      <button class="bstr-gs-link" data-act="cancel">Để sau</button>
-    `, { escape: 'cancel', focus: 'take-drive' });
+export function moManChan(text) {
+  ensureCss();
+  const overlay = document.createElement('div');
+  overlay.className = 'bstr-gs-overlay';
+  overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
+      <p class="bstr-gs-title">${esc(text)}</p>
+      <p class="bstr-gs-desc">Đừng đóng trang. Việc này mất vài giây, xong trang sẽ tự tải lại.</p></div>`;
+  const chan = (event) => { event.stopPropagation(); event.preventDefault(); };
+  overlay.addEventListener('keydown', chan, true);
+  document.body.appendChild(overlay);
+  overlay.firstElementChild.focus();
+  return () => overlay.remove();
 }
 
 /** Mở app từ liên kết ?nhan= (drive-sync/nhan.js). Trả 'nhan' hoặc 'cancel'. */

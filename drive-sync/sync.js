@@ -1,13 +1,14 @@
 import { CONFIG, LS } from './config.js';
-import { exportAll, restore, deviceId, taiLieuMauBundle } from './store.js';
+import { exportAll, restore, deviceId, taiLieuMauBundle, laKhongGianMau } from './store.js';
 import { getToken, isSignedIn, signIn, signOut } from './auth.js';
 import {
   ensureFolder, uploadJson, listVersions, listBackups, downloadJson, pruneVersions, pruneBackups,
   listSelfTest, deleteFile,
 } from './drive.js';
 import {
-  showSignIn, showConflict, showFirstRun, showShrinkWarning, setStatus, clearStatus,
+  showSignIn, showShrinkWarning, setStatus, clearStatus, moManChan,
 } from './ui.js';
+import { gopPayload, banCanGop } from './gop.js';
 
 const readState = () => {
   try { return JSON.parse(localStorage.getItem(LS.state) || 'null'); }
@@ -118,62 +119,48 @@ export async function folder() {
   return folderId;
 }
 
-/**
- * Tệp phiên bản mới nhất trên Drive — CHỈ liệt kê, không tải nội dung.
- * Câu hỏi thật sự luôn là "tệp mới nhất trên Drive có phải tệp máy này vừa ghi
- * không", và danh sách đã trả về `id` + `createdTime` rồi. Tải cả tệp 1,4 MB
- * mỗi 2 phút chỉ để đọc `savedAt` là tốn băng thông và thêm một chỗ để hỏng.
- */
-async function newestOnDrive(token) {
-  const files = await listVersions(token, await folder());
-  return files[0] || null;
+/** Một nơi đồng bộ một lúc, kể cả giữa các tab cùng trình duyệt; tab khác đang giữ khoá thì bỏ lượt (trả undefined). */
+function khoaDongBo(viec) {
+  const locks = globalThis.navigator?.locks;
+  if (!locks?.request) return viec();
+  return locks.request('bstr-drive-sync', { ifAvailable: true }, (lock) => (lock ? viec() : undefined));
 }
 
-/** Drive đã đổi so với lần máy này ghi thành công? So theo id tệp. */
-const daDoiTrenDrive = (latest, state) => !!latest && latest.id !== (state?.fileId || null);
+/** Tải payload lên Drive thành bản mới nhất của máy này (nhãn thiết bị và số tài liệu). */
+async function taiLenBanMayNay(token, payload) {
+  const name = `${CONFIG.filePrefix}${payload.savedAt.replace(/[:.]/g, '-')}.json`;
+  return uploadJson(token, await folder(), name, payload, {
+    bstrThietBi: deviceId(), bstrTen: tenThietBi(), bstrSoTaiLieu: String(docCount(payload)),
+  });
+}
+
+/** Máy khác có bản chưa gộp: băng rôn chờ người dùng bấm (không tự tải lại khi đang gõ). Trả true nếu đã báo. */
+function baoCanGop(canGop) {
+  if (!canGop.length) return false;
+  setStatus('Máy khác vừa có thay đổi.', {
+    persist: true, level: 'info', action: { label: 'Tải lại để gộp', run: () => gopVoiDrive() },
+  });
+  return true;
+}
 
 export async function saveNow({ force = false, background = false } = {}) {
   if (busy) return;
   busy = true;
-  let dangTaiVe = false;
-  // Người dùng cố ý ghi đè (force, hoặc vừa chọn "Giữ bản máy này" trong hộp
-  // thoại xung đột) thì KHÔNG được bỏ qua vì vân tay trùng: bản trên Drive là
-  // một bản khác, bỏ qua tức là làm ngược lại điều họ vừa yêu cầu.
-  let ghiDeTheoYNguoiDung = force;
+  try {
+    await khoaDongBo(() => luu({ force, background }));
+  } finally {
+    busy = false;
+  }
+}
+
+async function luu({ force, background }) {
   try {
     if (!background) setStatus('Đang lưu lên Drive...');
     const token = await ensureToken();
-    const latest = await newestOnDrive(token);
     const state = readState();
-
-    // KHÔNG lọc theo deviceId: tệp mới nhất trên Drive khác tệp máy này ghi nhận
-    // là phải hỏi, kể cả khi chính máy này đã ghi nó — máy này cũng có thể hỏng.
-    if (!force && daDoiTrenDrive(latest, state)) {
-      // Lần lưu nền KHÔNG bao giờ được mở hộp thoại: nó giữ khoá `busy` cho tới
-      // khi người dùng trả lời, làm mọi lần lưu sau đó im lặng không chạy, và
-      // nó nhảy ra giữa lúc người ta đang gõ. Bỏ qua lượt này và báo trạng thái.
-      if (background) {
-        setStatus('Trên Drive có bản mới hơn, có thể từ máy khác. Lượt lưu này đã tạm dừng.', {
-          persist: true, level: 'warn', action: { label: 'Chọn bản giữ lại', run: () => saveNow() },
-        });
-        return;
-      }
-      const choice = await showConflict({ localAt: state?.savedAt, driveAt: latest.createdTime });
-      if (choice === 'take-drive') {
-        dangTaiVe = true;
-        return await pullFromDrive({ confirmed: true }); // giữ nguyên khoá
-      }
-      // Mọi câu trả lời đều phải xử lý tường minh. Trước đây chỉ 'cancel' được
-      // bắt, nên bất kỳ đáp án lạ nào cũng rơi thẳng xuống nhánh ghi đè.
-      if (choice !== 'keep-local') { setStatus('Đã bỏ qua lần lưu này'); return; }
-      ghiDeTheoYNguoiDung = true;
-    }
-
-    // Tới đây là biết chắc: không còn xung đột nào đang treo (dù vì không có,
-    // dù vì force ghi đè có chủ ý). Hai banner thường trực saveNow có thể bật
-    // ("Drive có bản mới", "số tài liệu ít đi") đều là điều kiện tính lại từ
-    // đầu mỗi lần chạy — nên banner cũ, nếu còn, chắc chắn đã lỗi thời. Xoá
-    // một lần ở đây thay vì rải clearStatus() vào từng nhánh return phía sau.
+    // Tự gộp (28/09): Drive có bản mới hơn của máy khác thì VẪN lưu phần máy này (gộp về sau lấy đủ cả hai bên),
+    // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
+    const canGop = banCanGop(await listVersions(token, await folder()), state, deviceId());
     clearStatus();
 
     const payload = await exportAll();
@@ -187,8 +174,8 @@ export async function saveNow({ force = false, background = false } = {}) {
     const vanTay = fingerprint(payload);
     const soTaiLieu = docCount(payload);
 
-    if (!ghiDeTheoYNguoiDung && state && state.fingerprint === vanTay) {
-      if (!background) setStatus('Không có thay đổi mới');
+    if (!force && state && state.fingerprint === vanTay) {
+      if (!baoCanGop(canGop) && !background) setStatus('Không có thay đổi mới');
       return;
     }
 
@@ -205,36 +192,25 @@ export async function saveNow({ force = false, background = false } = {}) {
       if (!dongY) { setStatus('Đã huỷ lưu'); return; }
     }
 
-    const name = `${CONFIG.filePrefix}${payload.savedAt.replace(/[:.]/g, '-')}.json`;
-    const up = await uploadJson(token, await folder(), name, payload, {
-      bstrThietBi: deviceId(), bstrTen: tenThietBi(), bstrSoTaiLieu: String(soTaiLieu),
-    });
-    writeState({
-      fileId: up.id,
-      savedAt: payload.savedAt,
-      deviceId: deviceId(),
-      fingerprint: vanTay,
-      soTaiLieu,
-    });
+    const up = await taiLenBanMayNay(token, payload);
+    writeState({ fileId: up.id, savedAt: payload.savedAt, deviceId: deviceId(), fingerprint: vanTay, soTaiLieu, daGop: state?.daGop || [] });
 
     // Tối đa CONFIG.maxDevices thiết bị, mỗi thiết bị CONFIG.keepVersions bản; thiết bị lâu không lưu nhất bị bỏ.
     await pruneVersions(token, await listVersions(token, await folder()));
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
     clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa
-    if (!background) setStatus('Đã lưu lên Drive');
+    if (!baoCanGop(canGop) && !background) setStatus('Đã lưu lên Drive');
   } catch (e) {
-    if (dangTaiVe) {
-      console.error('[drive-sync] tải dữ liệu từ Drive thất bại', e);
-      setStatus('Chưa tải được dữ liệu từ Drive. Hãy kiểm tra kết nối rồi thử lại.', { persist: true, level: 'error' });
-    } else {
-      console.error('[drive-sync] lưu thất bại', e);
-      setStatus('Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
-        persist: true, level: 'error', action: { label: 'Thử lại ngay', run: () => saveNow() },
-      });
+    console.error('[drive-sync] lưu thất bại', e);
+    // Drive trả 403 kèm lý do storageQuotaExceeded trong nội dung lỗi (drive.js call() đưa nguyên văn vào message).
+    if (/storageQuotaExceeded/.test(e?.message || '')) {
+      setStatus('Google Drive đã đầy, chưa lưu được. Tài liệu vẫn nằm trên máy.', { persist: true, level: 'error' });
+      return;
     }
-  } finally {
-    busy = false;
+    setStatus('Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
+      persist: true, level: 'error', action: { label: 'Thử lại ngay', run: () => saveNow() },
+    });
   }
 }
 
@@ -252,64 +228,90 @@ export async function saoLuuTruocKhiGhiDe() {
   return uploadJson(token, await folder(), name, backup);
 }
 
-/** Giả định KHOÁ đã được người gọi giữ. */
-async function pullFromDrive({ confirmed = false } = {}) {
-  const token0 = await ensureToken();
-  const latest = await newestOnDrive(token0);
-  if (!latest) { setStatus('Trên Drive chưa có bản nào'); return; }
-  // Đã đồng bộ rồi thì khỏi tải: chính tệp này là tệp máy này ghi lần trước.
-  if (!confirmed && readState()?.fileId === latest.id) return;
-  // Đây mới là chỗ thật sự cần nội dung tệp.
-  const payload = await downloadJson(token0, latest.id);
-  // Máy chưa từng đồng bộ: bản Drive THAY hẳn dữ liệu máy (không hợp nhất), nếu không "Không gian làm việc mẫu"
-  // máy tự tạo nằm cạnh bản Drive và lần lưu sau đẩy cả hai lên (27/09). Đã sao lưu máy này ngay bên dưới.
-  const thayThe = !readState()?.fileId;
+async function boKhongGianMau(payload) {
+  const workspaces = [];
+  for (const ws of payload.workspaces) if (!(await laKhongGianMau(ws.id))) workspaces.push(ws);
+  return { ...payload, workspaces };
+}
 
-  // BẮT BUỘC: sao lưu bản đang có trên máy lên Drive TRƯỚC khi ghi đè nó.
-  // Nếu sao lưu thất bại thì dừng hẳn, thà không đồng bộ còn hơn mất dữ liệu.
-  // Dùng backupPrefix: bản sao lưu KHÔNG được len vào dòng phiên bản, nếu không
-  // lần khởi động sau app lại mời khôi phục đúng dữ liệu người dùng vừa bỏ.
+/**
+ * Tự gộp (28/09): gộp dữ liệu máy này với bản mới nhất của từng máy khác chưa gộp, ghi vào máy, lưu bản đã gộp lên
+ * Drive, tải lại trang. Máy chưa từng đồng bộ: bỏ "Không gian làm việc mẫu" tự tạo trước khi gộp (restore thayThe).
+ * An toàn: sao lưu máy TRƯỚC khi ghi (trừ khi máy chưa đổi từ lần đồng bộ trước: dữ liệu đó đã nằm trên Drive); tải
+ * hỏng, bản hỏng hay gộp hỏng thì không ghi gì.
+ */
+export async function gopVoiDrive() {
+  if (busy) { setStatus('Đang đồng bộ, thử lại sau ít giây'); return; }
+  busy = true;
   try {
-    await saoLuuTruocKhiGhiDe();
-  } catch (e) {
-    console.error('[drive-sync] sao lưu trước khi ghi đè thất bại', e);
-    setStatus('Không sao lưu được bản trên máy nên chưa tải về. Dữ liệu trên máy chưa bị thay đổi.', { persist: true, level: 'error' });
-    return;
+    return await khoaDongBo(gopNgay);
+  } finally {
+    busy = false;
   }
+}
 
-  setStatus('Đang tải dữ liệu từ Drive...');
-  let boDi = [];
+async function gopNgay() {
+  const state = readState();
+  const thayThe = !state?.fileId;
+  const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang gộp…');
+  let daGhi = false;
   try {
-    boDi = (await restore(payload, { thayThe }))?.bo || [];
-  } catch (e) {
-    if (e?.code === 'BSTR_BACKUP_INVALID') {
-      console.error('[drive-sync] bản sao lưu không qua kiểm tra đầu vào', e);
-      setStatus('Bản sao lưu trên Drive không hợp lệ. Dữ liệu trên máy chưa bị ghi đè.', { persist: true, level: 'warn' });
-      return;
+    const token = await ensureToken();
+    const files = banCanGop(await listVersions(token, await folder()), state, deviceId());
+    if (!files.length) { dong(); return 'khong-can'; }
+    const cacBan = await Promise.all(files.map((f) => downloadJson(token, f.id)));
+    let mayNay = await exportAll();
+    if (mayNay.workspaces.length && state?.fingerprint !== fingerprint(mayNay)) {
+      try {
+        await saoLuuTruocKhiGhiDe();
+      } catch (e) {
+        console.error('[drive-sync] sao lưu trước khi gộp thất bại', e);
+        dong();
+        setStatus('Không sao lưu được bản trên máy nên chưa gộp. Dữ liệu trên máy chưa bị thay đổi.', { persist: true, level: 'error' });
+        return 'loi';
+      }
     }
-    // writeWorkspace đã xoá và ghi lại một phần các store rồi. Đây đúng là lúc
-    // người dùng phải hành động — tuyệt đối không được báo "dữ liệu vẫn an toàn".
-    console.error('[drive-sync] phục hồi dữ liệu thất bại', e);
-    setStatus(
-      'Phục hồi chưa xong, dữ liệu trên máy có thể còn thiếu. Tải lại trang rồi chọn '
-      + '"Lấy bản trên Drive" một lần nữa.',
-      { persist: true, level: 'error', action: { label: 'Tải lại trang', run: () => location.reload() } }
-    );
-    return;
+    if (thayThe) mayNay = await boKhongGianMau(mayNay);
+    const { payload } = gopPayload(mayNay, cacBan);
+    daGhi = true;
+    const { bo } = await restore(payload, { thayThe });
+    const daGop = [...files.map((f) => f.id), ...(state?.daGop || [])].slice(0, 20);
+    writeState({ ...(state || {}), deviceId: deviceId(), daGop });
+    try {
+      const sauGhi = await exportAll();
+      const up = await taiLenBanMayNay(token, sauGhi);
+      writeState({ fileId: up.id, savedAt: sauGhi.savedAt, deviceId: deviceId(), fingerprint: fingerprint(sauGhi), soTaiLieu: docCount(sauGhi), daGop });
+      await pruneVersions(token, await listVersions(token, await folder()));
+      await pruneBackups(token, await listBackups(token, await folder()));
+    } catch (e) {
+      console.error('[drive-sync] lưu bản đã gộp thất bại, lượt lưu sau sẽ thử lại', e); // dữ liệu đã gộp nằm trên máy
+    }
+    const tu = thayThe ? null : [...new Set(files.map((f) => f.appProperties?.bstrTen || 'bản lưu cũ'))].join(', ');
+    try { sessionStorage.setItem(DA_KHOI_PHUC, JSON.stringify({ savedAt: payload.savedAt, soTaiLieu: docCount(payload), tu })); } catch {}
+    // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
+    if (bo.length) location.replace('/');
+    else location.reload();
+    return 'xong';
+  } catch (e) {
+    dong();
+    if (e?.code === 'BSTR_BACKUP_INVALID') {
+      console.error('[drive-sync] bản lưu không qua kiểm tra đầu vào', e);
+      setStatus('Bản lưu trên Drive không hợp lệ. Dữ liệu trên máy chưa bị ghi đè.', { persist: true, level: 'warn' });
+      return 'loi';
+    }
+    if (daGhi) {
+      console.error('[drive-sync] ghi dữ liệu đã gộp thất bại', e);
+      setStatus('Gộp chưa xong, dữ liệu trên máy có thể còn thiếu. Tải lại trang để gộp lại.', {
+        persist: true, level: 'error', action: { label: 'Tải lại trang', run: () => location.reload() },
+      });
+      return 'loi-ghi';
+    }
+    console.error('[drive-sync] gộp thất bại', e);
+    setStatus('Chưa gộp được với dữ liệu trên Drive. Tài liệu vẫn nằm trên máy.', {
+      persist: true, level: 'error', action: { label: 'Thử lại', run: () => gopVoiDrive() },
+    });
+    return 'loi';
   }
-  writeState({
-    fileId: latest.id,
-    savedAt: payload.savedAt,
-    deviceId: deviceId(),
-    fingerprint: fingerprint(payload),
-    soTaiLieu: docCount(payload),
-  });
-  // Sau khi tải lại, start() báo một lần "Đã lấy bản … về máy này: N tài liệu": người dùng vừa qua lúc căng nhất,
-  // cần thấy dữ liệu đã về đủ.
-  try { sessionStorage.setItem(DA_KHOI_PHUC, JSON.stringify({ savedAt: payload.savedAt, soTaiLieu: docCount(payload) })); } catch {}
-  // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
-  if (boDi.length) location.replace('/');
-  else location.reload();
 }
 
 const DA_KHOI_PHUC = 'bstr-drive-da-khoi-phuc';
@@ -324,17 +326,9 @@ function baoDaKhoiPhuc() {
   const d = info?.savedAt ? new Date(info.savedAt) : null;
   if (!d || Number.isNaN(d.getTime())) return;
   const luc = d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric', year: 'numeric' });
-  setStatus(`Đã lấy bản lưu lúc ${luc} từ Drive về máy này: ${info.soTaiLieu} tài liệu.`, { persist: true });
-}
-
-export async function loadFromDrive(opts = {}) {
-  if (busy) { setStatus('Đang đồng bộ, thử lại sau ít giây'); return; }
-  busy = true;
-  try {
-    await pullFromDrive(opts);
-  } finally {
-    busy = false;
-  }
+  setStatus(info.tu
+    ? `Đã gộp thay đổi từ ${info.tu}: ${info.soTaiLieu} tài liệu.`
+    : `Đã lấy bản lưu lúc ${luc} từ Drive về máy này: ${info.soTaiLieu} tài liệu.`, { persist: true });
 }
 
 /** Client ID thật luôn có dạng <số>-<chuỗi>.apps.googleusercontent.com. */
@@ -525,31 +519,15 @@ export async function start({ onSkip } = {}) {
     // lưu thành công mới xoá, nên chọn "Để sau" ở hộp xung đột thì băng rôn cũ ở lại (thử 25/09 trên bstrong68.com).
     clearStatus();
 
-    const state = readState();
     const token = await ensureToken();
-    const latest = await newestOnDrive(token);
-    if (daDoiTrenDrive(latest, state)) {
-      const local = await exportAll();
-      const mayTrang = local.workspaces.length === 0 || docCount(local) === 0;
-      if (mayTrang) {
-        // Không có gì để giữ nên không được mời "Giữ bản máy này".
-        const choice = await showFirstRun({ driveAt: latest.createdTime });
-        if (choice === 'take-drive') return await loadFromDrive({ confirmed: true });
-        // Từ chối thì DỪNG HẲN: nếu vẫn cài hẹn giờ, hai phút sau saveNow lại
-        // chạy với state rỗng và hiện đúng hộp thoại xung đột mà máy trắng
-        // không được phép thấy — kèm nút "Giữ bản máy này".
-        setStatus('Chưa đồng bộ. Mở lại ứng dụng khi bạn muốn lấy dữ liệu từ Drive.', { persist: true });
-        return;
-      } else {
-        const choice = await showConflict({ localAt: state?.savedAt, driveAt: latest.createdTime });
-        if (choice === 'take-drive') return await loadFromDrive({ confirmed: true });
-        if (choice === 'keep-local') await saveNow({ force: true });
-      }
+    const files = await listVersions(token, await folder());
+    if (banCanGop(files, readState(), deviceId()).length) {
+      // Tự gộp: thành công thì trang tải lại. Lỗi thì giữ lời báo, lượt lưu nền 2 phút sau sẽ lưu phần máy này.
+      if (await gopVoiDrive() === 'xong') return true;
     } else {
-      // Drive chưa đổi, hoặc chưa có bản nào: lưu ngay một lần ở tiền cảnh. Lần lưu nền không
-      // được mở hộp thoại, nên khi số tài liệu ít đi thì chỉ lần lưu này hỏi được người dùng
-      // (lời nhắc nền bảo "hãy tải lại trang để xác nhận").
-      await saveNow({ force: !latest });
+      // Drive chưa có bản nào của máy khác cần gộp: lưu ngay một lần ở tiền cảnh. Lần lưu nền không được mở hộp thoại,
+      // nên khi số tài liệu ít đi thì chỉ lần lưu này hỏi được người dùng.
+      await saveNow({ force: !files.length });
     }
 
     // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay.
