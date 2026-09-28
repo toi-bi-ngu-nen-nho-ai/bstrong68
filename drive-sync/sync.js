@@ -237,7 +237,7 @@ async function luu({ force, background }) {
 
     // Tối đa CONFIG.maxDevices thiết bị, mỗi thiết bị CONFIG.keepVersions bản; thiết bị lâu không lưu nhất bị bỏ.
     // Trừ thiết bị còn bản chưa gộp: máy đó có thể không mở lại nữa (máy mượn, cửa sổ ẩn danh), dọn là mất hẳn phần
-    // của nó. gopNgay dọn đủ sau khi đã gộp.
+    // của nó. gopNgay không dọn: nó nhớ bản đã gộp (daGop), lượt lưu sau khi tải lại trang dọn cả thiết bị đó.
     const chuaGop = new Set(canGop.map((f) => f.appProperties?.bstrThietBi || ''));
     const files = await listVersions(token, await folder());
     await pruneVersions(token, files.filter((f) => !chuaGop.has(f.appProperties?.bstrThietBi || '')));
@@ -275,8 +275,9 @@ async function boKhongGianMau(payload) {
 }
 
 /**
- * Tự gộp (28/09): gộp dữ liệu máy này với bản mới nhất của từng máy khác chưa gộp, ghi vào máy, lưu bản đã gộp lên
- * Drive, tải lại trang. Máy chưa từng đồng bộ: bỏ "Không gian làm việc mẫu" tự tạo trước khi gộp (restore thayThe).
+ * Tự gộp (28/09): gộp dữ liệu máy này với bản mới nhất của từng máy khác chưa gộp, ghi vào máy, tải lại trang. Không
+ * tải bản đã gộp lên ở đây (đợt 2): lượt lưu tiền cảnh của start() sau khi tải lại đẩy ảnh rồi lưu nó. Máy chưa từng
+ * đồng bộ: bỏ "Không gian làm việc mẫu" tự tạo trước khi gộp (restore thayThe).
  * An toàn: sao lưu máy TRƯỚC khi ghi (trừ khi máy chưa đổi từ lần đồng bộ trước: dữ liệu đó đã nằm trên Drive); tải
  * hỏng, bản hỏng hay gộp hỏng thì không ghi gì. Bản kia không có gì mới với máy này: chỉ nhớ đã gộp, trả 'khong-doi'.
  */
@@ -346,10 +347,12 @@ async function gopNgay() {
     // 20 giây) rồi mới tải lại trang; ảnh khác tải nền sau khi tải lại (taiAnhNen).
     const mo = docDangMo();
     if (mo) {
+      let hen;
       await Promise.race([
         taiAnhThieu(token, await folder(), { chiTaiLieu: mo }),
-        new Promise((r) => setTimeout(r, 20000)),
-      ]).catch((e) => console.error('[drive-sync] tải trước ảnh tài liệu đang mở thất bại, sẽ tải nền', e));
+        new Promise((r) => { hen = setTimeout(r, 20000); }),
+      ]).catch((e) => console.error('[drive-sync] tải trước ảnh tài liệu đang mở thất bại, sẽ tải nền', e))
+        .finally(() => clearTimeout(hen));
     }
     // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
     if (bo.length) location.replace('/');
@@ -388,10 +391,13 @@ const docDangMo = () => globalThis.location?.pathname?.match(/^\/workspace\/[^/]
 function taiAnhNen() {
   const viec = async () => {
     try {
-      const { thieuTrenDrive } = await taiAnhThieu(await ensureToken(), await folder(), {
+      const { daTai, thieuTrenDrive } = await taiAnhThieu(await ensureToken(), await folder(), {
         docDangMo: docDangMo(),
         baoTienDo: (n, tong) => setStatus(`Đang tải ảnh ${n}/${tong}`),
       });
+      // App không tự hiện ảnh về muộn trong tài liệu đang mở (Task 1): người dùng tưởng ảnh hỏng mà xoá ô ảnh thì xoá cả
+      // trên mọi máy. Thông báo ngắn nằm ô riêng, không đè cảnh báo "Thiếu k ảnh" (ui.js).
+      if (daTai) setStatus('Đã tải xong ảnh. Mở lại tài liệu nếu còn ô ảnh trống.');
       if (thieuTrenDrive) setStatus(`Thiếu ${thieuTrenDrive} ảnh trên Drive`, { persist: true, level: 'warn' });
     } catch (e) {
       console.error('[drive-sync] tải ảnh thất bại, lần mở app sau tải tiếp', e);

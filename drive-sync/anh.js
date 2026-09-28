@@ -28,11 +28,17 @@ export function thuTuTai(ds, docDangMo) {
  * Đẩy lên Drive mọi ảnh máy này có mà Drive chưa có, tối đa CONFIG.anhSongSong ảnh một lúc. Ảnh nào hỏng thì ném lỗi của
  * nó SAU khi các ảnh khác đã xong: người gọi không được lưu bản chữ (máy khác sẽ gộp được chữ mà thiếu ảnh), lần sau
  * chỉ đẩy phần còn thiếu. Trả số ảnh đã đẩy.
+ * Khoá ảnh nằm trong tên tệp và nhãn bstrAnh (Drive giới hạn một nhãn 124 byte). Khoá thường là băm 44 ký tự; khoá lạ
+ * (không phải chuỗi, quá 100 byte: gói chia sẻ ?nhan= mang nguyên văn) thì bỏ qua, không thì hỏng mãi và không lưu
+ * được bản chữ nào nữa.
  */
 export async function dayAnh(token, folderId) {
   const coTren = await listAnh(token, folderId);
   const canDay = new Map();
-  for (const a of await anhCoDuLieu()) if (!coTren.has(a.key) && !canDay.has(a.key)) canDay.set(a.key, a);
+  for (const a of await anhCoDuLieu()) {
+    if (typeof a.key !== 'string' || new TextEncoder().encode(a.key).length > 100) console.warn('[drive-sync] bỏ qua ảnh khoá không hợp lệ', a.key);
+    else if (!coTren.has(a.key) && !canDay.has(a.key)) canDay.set(a.key, a);
+  }
   const kq = await chayGioiHan([...canDay.values()].map((a) => async () => {
     const bytes = await docAnh(a.wsId, a.key);
     if (bytes) await uploadAnh(token, folderId, a.key, bytes, a.mime);

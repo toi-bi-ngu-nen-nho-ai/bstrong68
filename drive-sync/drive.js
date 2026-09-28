@@ -213,7 +213,10 @@ export async function listAnh(token, folderId) {
 /** Đưa byte gốc của một ảnh lên thành tệp ảnh (mimeType của ảnh, nhãn bstrAnh = khoá; khoá là băm nội dung nên ngắn). */
 export async function uploadAnh(token, folderId, khoa, bytes, mime) {
   const boundary = 'bstr' + Math.random().toString(36).slice(2);
-  const loai = mime || 'application/octet-stream';
+  // Mime lấy nguyên văn từ bản ghi ảnh (có thể từ gói chia sẻ ?nhan=): xuống dòng thì chèn được dòng đầu vào phần byte,
+  // kiểu Google Docs thì Drive từ chối. Chỉ dùng mime đúng dạng loại/kiểu, không thì như mime rỗng.
+  const loai = typeof mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(mime) && !mime.startsWith('application/vnd.google-apps')
+    ? mime : 'application/octet-stream';
   const meta = { name: CONFIG.anhPrefix + khoa, parents: [folderId], mimeType: loai, appProperties: { bstrAnh: khoa } };
   const head =
     `--${boundary}\r\n` +
