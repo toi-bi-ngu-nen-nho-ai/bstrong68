@@ -80,7 +80,9 @@ function readSchema(db) {
   });
 }
 
-export async function exportAll() {
+// kemAnh: chỉ bản sao lưu của máy chưa từng đồng bộ mang cả dữ liệu ảnh (blobData): đó là đường duy nhất restore xoá
+// workspace trên máy (thayThe bỏ workspace mẫu), còn ảnh của máy đó chưa từng đẩy lên Drive.
+export async function exportAll({ kemAnh = false } = {}) {
   const workspaces = [];
   // Rỗng thì mọi điều kiện taiLieuMauSet.size bên dưới đều false — hành vi
   // giống hệt trước khi có tính năng này, không đọc thêm, không lọc thêm gì.
@@ -95,7 +97,7 @@ export async function exportAll() {
       // Đọc mọi store trong MỘT transaction chỉ đọc để có một ảnh chụp nhất quán. Đọc từng store riêng
       // thì kho lưu trữ có thể gộp update vào snapshot giữa hai lần đọc: một tài liệu mới vắng mặt ở cả hai,
       // và lần lưu tưởng số tài liệu ít đi.
-      const names = CONFIG.syncStores.filter((n) => db.objectStoreNames.contains(n));
+      const names = (kemAnh ? [...CONFIG.syncStores, 'blobData'] : CONFIG.syncStores).filter((n) => db.objectStoreNames.contains(n));
       const raw = {};
       if (names.length) {
         const tx = db.transaction(names, 'readonly');

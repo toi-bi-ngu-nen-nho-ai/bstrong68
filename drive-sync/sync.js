@@ -256,10 +256,10 @@ async function luu({ force, background }) {
  * Dùng backupPrefix: bản sao lưu KHÔNG được len vào dòng phiên bản, nếu không
  * lần khởi động sau app lại mời khôi phục đúng dữ liệu người dùng vừa bỏ.
  */
-export async function saoLuuTruocKhiGhiDe() {
+export async function saoLuuTruocKhiGhiDe({ kemAnh = false } = {}) {
   setStatus('Đang sao lưu bản trên máy trước khi ghi đè...');
   const token = await ensureToken();
-  const backup = await exportAll();
+  const backup = await exportAll({ kemAnh });
   const name = `${CONFIG.backupPrefix}${backup.savedAt.replace(/[:.]/g, '-')}.json`;
   return uploadJson(token, await folder(), name, backup);
 }
@@ -313,7 +313,7 @@ async function gopNgay() {
     kenh?.postMessage('dang-gop');
     if (mayNay.workspaces.length && state?.fingerprint !== fingerprint(mayNay)) {
       try {
-        await saoLuuTruocKhiGhiDe();
+        await saoLuuTruocKhiGhiDe({ kemAnh: thayThe });
       } catch (e) {
         console.error('[drive-sync] sao lưu trước khi gộp thất bại', e);
         dong();
