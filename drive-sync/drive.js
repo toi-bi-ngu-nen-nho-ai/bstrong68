@@ -3,15 +3,15 @@ import { CONFIG } from './config.js';
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
-async function call(token, url, opts = {}) {
+async function call(token, url, opts = {}, ketQua = (res) => (res.status === 204 ? null : res.json())) {
   const res = await fetch(url.startsWith('http') ? url : API + url, {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
   });
   if (!res.ok) {
-    throw new Error(`Drive lỗi ${res.status}: ${await res.text()}`);
+    throw Object.assign(new Error(`Drive lỗi ${res.status}: ${await res.text()}`), { status: res.status });
   }
-  return res.status === 204 ? null : res.json();
+  return ketQua(res);
 }
 
 /**
@@ -189,6 +189,23 @@ export async function taiJsonCongKhai(fileId, shareUrl) {
 // ── Tệp ảnh (tự gộp đợt 2) ── mỗi ảnh một tệp CONFIG.anhPrefix + khoá ảnh, nội dung là byte gốc của ảnh.
 
 /**
+ * Lỗi tạm của Drive (429, 5xx, 403 quá hạn mức gọi) khi đẩy/tải hàng trăm ảnh: chờ theo CONFIG.anhChoThuLai rồi thử lại.
+ * Lỗi khác (kể cả 403 Drive đầy) ném ngay, nguyên văn. Chỉ dùng cho ba hàm ảnh dưới đây.
+ */
+async function thuLai(viec) {
+  for (let lan = 0; ; lan++) {
+    try {
+      return await viec();
+    } catch (e) {
+      const tam = [429, 500, 502, 503, 504].includes(e?.status)
+        || (e?.status === 403 && /rateLimitExceeded|userRateLimitExceeded/.test(e.message));
+      if (!tam || lan >= CONFIG.anhChoThuLai.length) throw e;
+      await new Promise((r) => setTimeout(r, CONFIG.anhChoThuLai[lan]));
+    }
+  }
+}
+
+/**
  * Mọi tệp ảnh trong thư mục: Map khoá ảnh -> id tệp. Đọc hết các trang (một thư mục có thể có hàng trăm ảnh; trang
  * mặc định của Drive chỉ 100 tệp). Lọc lại đúng tiền tố như listByPrefix. Hai tệp cùng khoá (hai máy đẩy cùng lúc)
  * thì giữ tệp gặp trước: cùng khoá là cùng nội dung.
@@ -198,8 +215,8 @@ export async function listAnh(token, folderId) {
   const ra = new Map();
   let trang = '';
   do {
-    const r = await call(token, `/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)`
-      + (trang ? `&pageToken=${encodeURIComponent(trang)}` : ''));
+    const r = await thuLai(() => call(token, `/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)`
+      + (trang ? `&pageToken=${encodeURIComponent(trang)}` : '')));
     for (const f of r.files || []) {
       if (typeof f.name !== 'string' || !f.name.startsWith(CONFIG.anhPrefix)) continue;
       const khoa = f.appProperties?.bstrAnh || f.name.slice(CONFIG.anhPrefix.length);
@@ -214,28 +231,42 @@ export async function listAnh(token, folderId) {
 export async function uploadAnh(token, folderId, khoa, bytes, mime) {
   const boundary = 'bstr' + Math.random().toString(36).slice(2);
   // Mime lấy nguyên văn từ bản ghi ảnh (có thể từ gói chia sẻ ?nhan=): xuống dòng thì chèn được dòng đầu vào phần byte,
-  // kiểu Google Docs thì Drive từ chối. Chỉ dùng mime đúng dạng loại/kiểu, không thì như mime rỗng.
-  const loai = typeof mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(mime) && !mime.startsWith('application/vnd.google-apps')
+  // kiểu Google Docs (mime không phân biệt hoa thường) thì Drive từ chối. Chỉ dùng mime đúng dạng loại/kiểu, không thì
+  // như mime rỗng.
+  const loai = typeof mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(mime) && !/^application\/vnd\.google-apps/i.test(mime)
     ? mime : 'application/octet-stream';
   const meta = { name: CONFIG.anhPrefix + khoa, parents: [folderId], mimeType: loai, appProperties: { bstrAnh: khoa } };
+  // Ảnh lớn: resumable. Xin phiên (siêu dữ liệu, loại và cỡ byte), Drive trả địa chỉ phiên ở Location, rồi PUT byte vào đó.
+  // Lỗi tạm thì thử lại từ bước xin phiên (gửi lại cả ảnh: đơn giản, đủ dùng).
+  if (bytes.byteLength > CONFIG.anhMultipartToiDa) return thuLai(async () => {
+    const diaChi = await call(token, `${UPLOAD}/files?uploadType=resumable&fields=id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': loai, 'X-Upload-Content-Length': String(bytes.byteLength) },
+      body: JSON.stringify(meta),
+    }, (res) => res.headers.get('Location'));
+    if (!diaChi) throw new Error('Drive không trả địa chỉ phiên tải lên (Location)');
+    return call(token, diaChi, { method: 'PUT', headers: { 'Content-Type': loai }, body: bytes });
+  });
   const head =
     `--${boundary}\r\n` +
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
     JSON.stringify(meta) + '\r\n' +
     `--${boundary}\r\n` +
     `Content-Type: ${loai}\r\n\r\n`;
-  return call(token, `${UPLOAD}/files?uploadType=multipart&fields=id`, {
+  return thuLai(() => call(token, `${UPLOAD}/files?uploadType=multipart&fields=id`, {
     method: 'POST',
     headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
     body: new Blob([head, bytes, `\r\n--${boundary}--`]),
-  });
+  }));
 }
 
 /** Byte gốc của một tệp ảnh. */
 export async function downloadAnh(token, fileId) {
-  const res = await fetch(`${API}/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
+  return thuLai(async () => {
+    const res = await fetch(`${API}/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw Object.assign(new Error(`Drive tải ảnh lỗi ${res.status}`), { status: res.status });
+    return new Uint8Array(await res.arrayBuffer());
   });
-  if (!res.ok) throw new Error(`Drive tải ảnh lỗi ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
 }

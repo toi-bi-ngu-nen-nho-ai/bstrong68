@@ -155,8 +155,9 @@ export function when(iso, now = Date.now()) {
 }
 
 /**
- * Màn chặn nhập trong lúc gộp hoặc lấy dữ liệu từ Drive (vài giây, xong thì trang tự tải lại): không bấm, không gõ được
- * vào tài liệu phía sau, để không có chữ nào gõ đúng lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
+ * Màn chặn nhập trong lúc gộp hoặc lấy dữ liệu từ Drive (thường vài giây; có khi tới nửa phút vì tải trước ảnh của tài
+ * liệu đang mở; xong thì trang tự tải lại): không bấm, không gõ được vào tài liệu phía sau, để không có chữ nào gõ đúng
+ * lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
  */
 export function moManChan(text) {
   ensureCss();
@@ -164,7 +165,7 @@ export function moManChan(text) {
   overlay.className = 'bstr-gs-overlay';
   overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
       <p class="bstr-gs-title">${esc(text)}</p>
-      <p class="bstr-gs-desc">Đừng đóng trang. Việc này mất vài giây, xong trang sẽ tự tải lại.</p></div>`;
+      <p class="bstr-gs-desc">Đừng đóng trang. Việc này thường mất vài giây, có khi tới nửa phút; xong trang sẽ tự tải lại.</p></div>`;
   // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy.
   const chan = (event) => { event.stopImmediatePropagation(); event.preventDefault(); };
   window.addEventListener('keydown', chan, { capture: true });

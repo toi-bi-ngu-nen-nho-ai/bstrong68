@@ -81,7 +81,8 @@ function readSchema(db) {
 }
 
 // kemAnh: chỉ bản sao lưu của máy chưa từng đồng bộ mang cả dữ liệu ảnh (blobData): đó là đường duy nhất restore xoá
-// workspace trên máy (thayThe bỏ workspace mẫu), còn ảnh của máy đó chưa từng đẩy lên Drive.
+// workspace trên máy (thayThe bỏ workspace mẫu), còn ảnh của máy đó chưa từng đẩy lên Drive. true: mọi workspace;
+// danh sách id: chỉ các workspace đó (những workspace sắp bị bỏ).
 export async function exportAll({ kemAnh = false } = {}) {
   const workspaces = [];
   // Rỗng thì mọi điều kiện taiLieuMauSet.size bên dưới đều false — hành vi
@@ -97,7 +98,8 @@ export async function exportAll({ kemAnh = false } = {}) {
       // Đọc mọi store trong MỘT transaction chỉ đọc để có một ảnh chụp nhất quán. Đọc từng store riêng
       // thì kho lưu trữ có thể gộp update vào snapshot giữa hai lần đọc: một tài liệu mới vắng mặt ở cả hai,
       // và lần lưu tưởng số tài liệu ít đi.
-      const names = (kemAnh ? [...CONFIG.syncStores, 'blobData'] : CONFIG.syncStores).filter((n) => db.objectStoreNames.contains(n));
+      const kem = Array.isArray(kemAnh) ? kemAnh.includes(id) : !!kemAnh;
+      const names = (kem ? [...CONFIG.syncStores, 'blobData'] : CONFIG.syncStores).filter((n) => db.objectStoreNames.contains(n));
       const raw = {};
       if (names.length) {
         const tx = db.transaction(names, 'readonly');
@@ -644,10 +646,15 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs 
 // ─────────────────────────── Ảnh (tự gộp đợt 2) ───────────────────────────
 // Dữ liệu ảnh (blobData) không đi trong bản lưu: anh.js đẩy từng ảnh lên Drive thành tệp riêng và tải về ảnh còn thiếu.
 
-/** Mọi bản ghi (hay mọi khoá, cach = 'getAllKeys') của một kho; không có kho thì mảng rỗng. */
-async function tatCa(db, ten, cach = 'getAll') {
-  if (!db.objectStoreNames.contains(ten)) return [];
-  return req(db.transaction(ten, 'readonly').objectStore(ten)[cach]());
+/**
+ * Đọc các kho trong MỘT giao dịch chỉ đọc (ảnh chụp nhất quán: ảnh ghi giữa hai lần đọc không bị báo thiếu hay mất mime).
+ * can: { tên kho: 'getAll' | 'getAllKeys' }. Trả { tên kho: mọi bản ghi hay mọi khoá }; không có kho thì mảng rỗng.
+ */
+async function tatCa(db, can) {
+  const co = Object.keys(can).filter((ten) => db.objectStoreNames.contains(ten));
+  const tx = co.length ? db.transaction(co, 'readonly') : null;
+  const ra = await Promise.all(Object.entries(can).map(([ten, cach]) => (co.includes(ten) ? req(tx.objectStore(ten)[cach]()) : [])));
+  return Object.fromEntries(Object.keys(can).map((ten, i) => [ten, ra[i]]));
 }
 
 /** Ảnh máy này có dữ liệu: [{ wsId, key, mime }]. Chỉ đọc khoá của blobData, không đọc byte ảnh. */
@@ -657,8 +664,9 @@ export async function anhCoDuLieu() {
     if (!(await dbExists(dbName(wsId)))) continue;
     const db = await req(indexedDB.open(dbName(wsId)));
     try {
-      const mime = new Map((await tatCa(db, 'blobs')).map((b) => [b.key, b.mime || '']));
-      for (const key of await tatCa(db, 'blobData', 'getAllKeys')) ra.push({ wsId, key, mime: mime.get(key) || '' });
+      const { blobs, blobData } = await tatCa(db, { blobs: 'getAll', blobData: 'getAllKeys' });
+      const mime = new Map(blobs.map((b) => [b.key, b.mime || '']));
+      for (const key of blobData) ra.push({ wsId, key, mime: mime.get(key) || '' });
     } finally {
       db.close();
     }
@@ -687,6 +695,7 @@ export async function ghiAnh(wsId, key, bytes) {
     if (!db.objectStoreNames.contains('blobData')) return false;
     const tx = db.transaction('blobData', 'readwrite');
     const finished = txDone(tx);
+    finished.catch(() => {}); // getKey hỏng thì lỗi đi ra từ getKey; giao dịch bị huỷ theo không thành lời hứa bị bỏ rơi
     const os = tx.objectStore('blobData');
     const daCo = (await req(os.getKey(key))) !== undefined;
     if (!daCo) os.put({ key, data: bytes });
@@ -700,7 +709,8 @@ export async function ghiAnh(wsId, key, bytes) {
 /**
  * Ảnh máy này cần mà chưa có dữ liệu: bản ghi blobs chưa đánh dấu xoá mà blobData không có. Kèm tài liệu nhắc tới ảnh
  * (quét snapshot như blobOwners) và lần sửa gần nhất của các tài liệu đó, để anh.js xếp thứ tự tải.
- * ponytail: quét O(số tài liệu × số ảnh thiếu) như blobOwners; chỉ chạy khi có ảnh thiếu.
+ * ponytail: đọc cả snapshots mỗi lần (cùng giao dịch với blobs, blobData) dù không thiếu ảnh nào, như exportAll mỗi lượt
+ * lưu; quét O(số tài liệu × số ảnh thiếu) như blobOwners, chỉ khi có ảnh thiếu.
  */
 export async function anhThieu() {
   const ra = [];
@@ -708,10 +718,10 @@ export async function anhThieu() {
     if (!(await dbExists(dbName(wsId)))) continue;
     const db = await req(indexedDB.open(dbName(wsId)));
     try {
-      const co = new Set(await tatCa(db, 'blobData', 'getAllKeys'));
-      const thieu = (await tatCa(db, 'blobs')).filter((b) => !b.deletedAt && !co.has(b.key)).map((b) => b.key);
+      const { blobs, blobData, snapshots: snaps } = await tatCa(db, { blobs: 'getAll', blobData: 'getAllKeys', snapshots: 'getAll' });
+      const co = new Set(blobData);
+      const thieu = blobs.filter((b) => !b.deletedAt && !co.has(b.key)).map((b) => b.key);
       if (!thieu.length) continue;
-      const snaps = await tatCa(db, 'snapshots');
       const owners = blobOwners(snaps, thieu);
       const luc = new Map(snaps.map((s) => [s.docId, +new Date(s.updatedAt || s.createdAt || 0)]));
       for (const key of thieu) {

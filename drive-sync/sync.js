@@ -199,6 +199,7 @@ async function luu({ force, background }) {
     // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
     const canGop = banCanGop(await listVersions(token, await folder()), state, deviceId());
     clearStatus();
+    baoThieuAnh();
 
     const payload = await exportAll();
 
@@ -230,8 +231,9 @@ async function luu({ force, background }) {
     }
 
     // Ảnh là tệp riêng (tự gộp đợt 2): đẩy hết ảnh Drive chưa có rồi mới lưu bản chữ, không thì máy khác gộp được chữ mà
-    // thiếu ảnh. Đứt giữa chừng thì ném lỗi (báo "Chưa lưu được…", tự thử lại), lần sau chỉ đẩy phần còn thiếu.
-    await dayAnh(token, await folder());
+    // thiếu ảnh. Đứt giữa chừng thì ném lỗi (báo "Chưa lưu được…", tự thử lại), lần sau chỉ đẩy phần còn thiếu. Lần đầu có
+    // thể lâu: báo tiến độ.
+    await dayAnh(token, await folder(), { baoTienDo: (n, tong) => setStatus(`Đang tải ảnh lên ${n}/${tong}`) });
     const up = await taiLenBanMayNay(token, payload);
     writeState({ fileId: up.id, savedAt: payload.savedAt, deviceId: deviceId(), fingerprint: vanTay, soTaiLieu, daGop: state?.daGop || [] });
 
@@ -244,6 +246,7 @@ async function luu({ force, background }) {
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
     clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa
+    baoThieuAnh(); // trừ ảnh còn thiếu trên Drive: lưu xong vẫn thiếu
     if (!baoCanGop(canGop) && !background) setStatus('Đã lưu lên Drive');
   } catch (e) {
     console.error('[drive-sync] lưu thất bại', e);
@@ -317,8 +320,10 @@ async function gopNgay() {
     // máy sau lúc xuất rồi bị restore xoá.
     kenh?.postMessage('dang-gop');
     if (mayNay.workspaces.length && state?.fingerprint !== fingerprint(mayNay)) {
+      // Bản sao lưu mang ảnh chỉ của workspace sắp bị bỏ (workspace mẫu, boKhongGianMau): ảnh của chúng chưa từng lên Drive.
+      const seBo = mayNay.workspaces.map((w) => w.id).filter((id) => !vao.workspaces.some((w) => w.id === id));
       try {
-        await saoLuuTruocKhiGhiDe({ kemAnh: thayThe });
+        await saoLuuTruocKhiGhiDe({ kemAnh: seBo.length ? seBo : false });
       } catch (e) {
         console.error('[drive-sync] sao lưu trước khi gộp thất bại', e);
         dong();
@@ -384,6 +389,13 @@ async function gopNgay() {
 /** Tài liệu đang mở (địa chỉ /workspace/<không gian>/<tài liệu>), để tải ảnh của nó trước. */
 const docDangMo = () => globalThis.location?.pathname?.match(/^\/workspace\/[^/]+\/([^/?#]+)/)?.[1] || null;
 
+let soAnhThieu = 0; // số ảnh thiếu trên Drive ở lần tải nền gần nhất (taiAnhNen đặt)
+
+/** Cảnh báo ảnh thiếu trên Drive khi còn thiếu. luu gọi lại sau mỗi clearStatus(): cảnh báo ở lại tới khi hết thiếu. */
+function baoThieuAnh() {
+  if (soAnhThieu) setStatus(`Thiếu ${soAnhThieu} ảnh trên Drive: mở app trên máy đã thêm ảnh để tải lên.`, { persist: true, level: 'warn' });
+}
+
 /**
  * Tải nền ảnh máy này còn thiếu (sau khi gộp hay lấy dữ liệu từ Drive), báo "Đang tải ảnh n/N". Một tab làm một lúc
  * (khoá riêng 'bstr-drive-anh', không giữ khoá đồng bộ: lượt lưu vẫn chạy). Hỏng thì lần mở app sau tải tiếp.
@@ -398,7 +410,8 @@ function taiAnhNen() {
       // App không tự hiện ảnh về muộn trong tài liệu đang mở (Task 1): người dùng tưởng ảnh hỏng mà xoá ô ảnh thì xoá cả
       // trên mọi máy. Thông báo ngắn nằm ô riêng, không đè cảnh báo "Thiếu k ảnh" (ui.js).
       if (daTai) setStatus('Đã tải xong ảnh. Mở lại tài liệu nếu còn ô ảnh trống.');
-      if (thieuTrenDrive) setStatus(`Thiếu ${thieuTrenDrive} ảnh trên Drive`, { persist: true, level: 'warn' });
+      soAnhThieu = thieuTrenDrive;
+      baoThieuAnh();
     } catch (e) {
       console.error('[drive-sync] tải ảnh thất bại, lần mở app sau tải tiếp', e);
     }

@@ -29,6 +29,10 @@ export const CONFIG = {
   // Ảnh là tệp riêng trên Drive (tự gộp đợt 2, 28/09): mỗi ảnh một tệp anhPrefix + khoá ảnh, đẩy một lần; đẩy và tải
   // tối đa anhSongSong tệp một lúc. Tiền tố riêng: không trùng filePrefix, backupPrefix, sharePrefix, selfTestPrefix.
   anhPrefix: 'bstr-anh-',
+  // Lỗi tạm của Drive (quá tải, quá hạn mức gọi) khi liệt kê/đẩy/tải ảnh: thử lại sau lần lượt các khoảng chờ này (ms).
+  anhChoThuLai: [1000, 2000, 4000],
+  // Ảnh lớn hơn mức này đẩy lên kiểu resumable (Drive khuyên dùng cho tệp trên 5 MB), nhỏ hơn thì multipart một lệnh.
+  anhMultipartToiDa: 5 * 1024 * 1024,
   anhSongSong: 6,
   autoSaveMs: 2 * 60 * 1000,
   signInTimeoutMs: 120 * 1000,
