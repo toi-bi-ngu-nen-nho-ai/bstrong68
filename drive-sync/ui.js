@@ -165,11 +165,12 @@ export function moManChan(text) {
   overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
       <p class="bstr-gs-title">${esc(text)}</p>
       <p class="bstr-gs-desc">Đừng đóng trang. Việc này mất vài giây, xong trang sẽ tự tải lại.</p></div>`;
-  const chan = (event) => { event.stopPropagation(); event.preventDefault(); };
-  overlay.addEventListener('keydown', chan, true);
+  // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy.
+  const chan = (event) => { event.stopImmediatePropagation(); event.preventDefault(); };
+  window.addEventListener('keydown', chan, { capture: true });
   document.body.appendChild(overlay);
   overlay.firstElementChild.focus();
-  return () => overlay.remove();
+  return () => { window.removeEventListener('keydown', chan, { capture: true }); overlay.remove(); };
 }
 
 /** Mở app từ liên kết ?nhan= (drive-sync/nhan.js). Trả 'nhan' hoặc 'cancel'. */
