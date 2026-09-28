@@ -129,17 +129,26 @@ function khoaDongBo(viec) {
 let kenh = null;
 
 /**
- * Tab khác sắp ghi dữ liệu đã gộp vào máy (gopNgay phát 'dang-gop' khi đang giữ khoá): tab này chặn nhập, chờ khoá rồi
- * tải lại để đọc dữ liệu mới. Khoá được nhả khi tab kia xong, hỏng hay bị đóng. Chữ gõ ở đây lúc đó sẽ bị lượt ghi kia xoá.
+ * Tab khác sắp ghi dữ liệu đã gộp vào máy (gopNgay phát 'dang-gop' khi đang giữ khoá): tab này chặn nhập và chờ khoá,
+ * vì chữ gõ ở đây lúc đó sẽ bị lượt ghi kia xoá. Khoá được nhả khi tab kia xong, hỏng hay bị đóng. Tab kia đã báo
+ * 'da-ghi' (không kèm 'khong-ghi' sau đó) thì tải lại để đọc dữ liệu mới; không thì mở lại và chờ lượt sau. Tải lại cả khi
+ * tab kia không ghi gì thì hai tab gộp hỏng rồi tải lại lẫn nhau mãi (tab vừa tải lại tự gộp).
+ * index.js gọi lúc tải trang, không đợi start(): tab chưa đăng nhập cũng ghi vào máy.
  */
-function ngheTabKhacGop() {
-  if (kenh || typeof BroadcastChannel !== 'function' || !globalThis.navigator?.locks?.request) return;
+export function ngheTabKhacGop() {
+  if (kenh || !clientIdDaCauHinh(CONFIG.clientId) || typeof BroadcastChannel !== 'function' || !globalThis.navigator?.locks?.request) return;
   kenh = new BroadcastChannel('bstr-drive-sync');
-  kenh.onmessage = (e) => {
-    if (e.data !== 'dang-gop') return;
-    kenh.onmessage = null;
-    moManChan('Đang gộp…');
-    navigator.locks.request('bstr-drive-sync', () => location.reload());
+  let cho = null; // đang chờ tab khác: { dong, daGhi }
+  kenh.onmessage = ({ data }) => {
+    if (cho && (data === 'da-ghi' || data === 'khong-ghi')) cho.daGhi = data === 'da-ghi';
+    if (data !== 'dang-gop' || cho) return;
+    cho = { dong: moManChan('Đang gộp…'), daGhi: false };
+    navigator.locks.request('bstr-drive-sync', () => {
+      const { dong, daGhi } = cho;
+      cho = null;
+      if (daGhi) location.reload();
+      else dong();
+    });
   };
 }
 
@@ -320,6 +329,7 @@ async function gopNgay() {
     if (thayThe) moi = await boKhongGianMau(moi);
     const { payload, thongKe } = gopPayload(moi, cacBan);
     daGhi = true;
+    kenh?.postMessage('da-ghi'); // tab đang chờ: dữ liệu trên máy sắp đổi, khoá nhả thì tải lại
     const { bo } = await restore(payload, { thayThe });
     writeState({ ...(state || {}), deviceId: deviceId(), daGop });
     try {
@@ -341,6 +351,7 @@ async function gopNgay() {
   } catch (e) {
     dong();
     if (e?.code === 'BSTR_BACKUP_INVALID') {
+      kenh?.postMessage('khong-ghi'); // restore kiểm tra đầu vào trước khi ghi: máy chưa bị đổi, tab đang chờ khỏi tải lại
       console.error('[drive-sync] bản lưu không qua kiểm tra đầu vào', e);
       setStatus('Bản lưu trên Drive không hợp lệ. Dữ liệu trên máy chưa bị ghi đè.', { persist: true, level: 'warn' });
       return 'loi';
@@ -548,7 +559,6 @@ export async function start({ onSkip } = {}) {
     return;
   }
 
-  ngheTabKhacGop(); // cả tab chưa đăng nhập cũng ghi vào máy, nên cũng phải chờ khi tab khác gộp
   try {
     if (!isSignedIn()) {
       const choice = await showSignIn();

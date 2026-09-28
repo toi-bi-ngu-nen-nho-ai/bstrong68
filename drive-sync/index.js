@@ -15,6 +15,7 @@ const login = createLoginFlow({
   onError: (e) => console.error('[drive-sync] khởi động lỗi', e),
 });
 window.bstrDriveSync = { CONFIG, ...sync, ...share, store, auth, ...login, ready: true };
+sync.ngheTabKhacGop(); // tab khác gộp thì tab này chặn nhập và chờ, kể cả khi chưa đăng nhập (chưa chạy start())
 
 /** Máy mở app lần đầu cần vài giây để tạo workspace; nhận tài liệu phải chờ có chỗ để ghi. */
 async function choWorkspace(hanMs = 30000) {
