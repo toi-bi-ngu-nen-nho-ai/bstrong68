@@ -9,6 +9,7 @@ import {
   showSignIn, showShrinkWarning, setStatus, clearStatus, moManChan,
 } from './ui.js';
 import { gopPayload, banCanGop } from './gop.js';
+import { dayAnh, taiAnhThieu } from './anh.js';
 
 const readState = () => {
   try { return JSON.parse(localStorage.getItem(LS.state) || 'null'); }
@@ -228,6 +229,9 @@ async function luu({ force, background }) {
       if (!dongY) { setStatus('Đã huỷ lưu'); return; }
     }
 
+    // Ảnh là tệp riêng (tự gộp đợt 2): đẩy hết ảnh Drive chưa có rồi mới lưu bản chữ, không thì máy khác gộp được chữ mà
+    // thiếu ảnh. Đứt giữa chừng thì ném lỗi (báo "Chưa lưu được…", tự thử lại), lần sau chỉ đẩy phần còn thiếu.
+    await dayAnh(token, await folder());
     const up = await taiLenBanMayNay(token, payload);
     writeState({ fileId: up.id, savedAt: payload.savedAt, deviceId: deviceId(), fingerprint: vanTay, soTaiLieu, daGop: state?.daGop || [] });
 
@@ -331,16 +335,10 @@ async function gopNgay() {
     daGhi = true;
     kenh?.postMessage('da-ghi'); // tab đang chờ: dữ liệu trên máy sắp đổi, khoá nhả thì tải lại
     const { bo } = await restore(payload, { thayThe });
+    // Không tải bản đã gộp lên ở đây (tự gộp đợt 2): phải đẩy ảnh trước (lần đầu có thể lâu) mà màn chặn nhập đang mở.
+    // Trang tải lại, lượt lưu tiền cảnh của start() đẩy ảnh rồi lưu bản này (vân tay còn là của lần trước nên chắc chắn
+    // lưu) và dọn bản cũ.
     writeState({ ...(state || {}), deviceId: deviceId(), daGop });
-    try {
-      const sauGhi = await exportAll();
-      const up = await taiLenBanMayNay(token, sauGhi);
-      writeState({ fileId: up.id, savedAt: sauGhi.savedAt, deviceId: deviceId(), fingerprint: fingerprint(sauGhi), soTaiLieu: docCount(sauGhi), daGop });
-      await pruneVersions(token, await listVersions(token, await folder()));
-      // Không dọn bản sao lưu ở đây: lượt này có thể vừa tạo một bản (xem pruneBackups ở drive.js). Lượt lưu sau dọn.
-    } catch (e) {
-      console.error('[drive-sync] lưu bản đã gộp thất bại, lượt lưu sau sẽ thử lại', e); // dữ liệu đã gộp nằm trên máy
-    }
     const tu = thayThe ? null : [...new Set(files.map((f) => f.appProperties?.bstrTen || 'bản lưu cũ'))].join(', ');
     const soTaiLieu = thayThe ? docCount(payload) : thongKe.taiLieuGop; // gộp: số tài liệu đổi hoặc thêm, không phải tổng
     try { sessionStorage.setItem(DA_KHOI_PHUC, JSON.stringify({ savedAt: payload.savedAt, soTaiLieu, tu })); } catch {}
@@ -369,6 +367,29 @@ async function gopNgay() {
     });
     return 'loi';
   }
+}
+
+/** Tài liệu đang mở (địa chỉ /workspace/<không gian>/<tài liệu>), để tải ảnh của nó trước. */
+const docDangMo = () => globalThis.location?.pathname?.match(/^\/workspace\/[^/]+\/([^/?#]+)/)?.[1] || null;
+
+/**
+ * Tải nền ảnh máy này còn thiếu (sau khi gộp hay lấy dữ liệu từ Drive), báo "Đang tải ảnh n/N". Một tab làm một lúc
+ * (khoá riêng 'bstr-drive-anh', không giữ khoá đồng bộ: lượt lưu vẫn chạy). Hỏng thì lần mở app sau tải tiếp.
+ */
+function taiAnhNen() {
+  const viec = async () => {
+    try {
+      const { thieuTrenDrive } = await taiAnhThieu(await ensureToken(), await folder(), {
+        docDangMo: docDangMo(),
+        baoTienDo: (n, tong) => setStatus(`Đang tải ảnh ${n}/${tong}`),
+      });
+      if (thieuTrenDrive) setStatus(`Thiếu ${thieuTrenDrive} ảnh trên Drive`, { persist: true, level: 'warn' });
+    } catch (e) {
+      console.error('[drive-sync] tải ảnh thất bại, lần mở app sau tải tiếp', e);
+    }
+  };
+  const locks = globalThis.navigator?.locks;
+  return locks?.request ? locks.request('bstr-drive-anh', { ifAvailable: true }, (lock) => (lock ? viec() : undefined)) : viec();
 }
 
 const DA_KHOI_PHUC = 'bstr-drive-da-khoi-phuc';
@@ -589,6 +610,7 @@ export async function start({ onSkip } = {}) {
 
     // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay.
     baoDaKhoiPhuc();
+    taiAnhNen(); // không chờ: ảnh về dần sau khi chữ đã đọc và gõ được
     setInterval(() => saveNow({ background: true }), CONFIG.autoSaveMs);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') saveNow({ background: true });
