@@ -26,6 +26,10 @@ export const CONFIG = {
   maxDevices: 3,
   keepVersions: 5,
   keepBackups: 3,
+  // Ảnh là tệp riêng trên Drive (tự gộp đợt 2, 28/09): mỗi ảnh một tệp anhPrefix + khoá ảnh, đẩy một lần; đẩy và tải
+  // tối đa anhSongSong tệp một lúc. Tiền tố riêng: không trùng filePrefix, backupPrefix, sharePrefix, selfTestPrefix.
+  anhPrefix: 'bstr-anh-',
+  anhSongSong: 6,
   autoSaveMs: 2 * 60 * 1000,
   signInTimeoutMs: 120 * 1000,
   syncStores: ['snapshots', 'updates', 'blobs', 'blobData', 'clocks', 'peerClocks'],

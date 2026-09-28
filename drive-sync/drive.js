@@ -185,3 +185,54 @@ export async function taiJsonCongKhai(fileId, shareUrl) {
   if (!res.ok) throw new Error(`Tải gói chia sẻ lỗi ${res.status}: ${await res.text()}`);
   return res.json();
 }
+
+// ── Tệp ảnh (tự gộp đợt 2) ── mỗi ảnh một tệp CONFIG.anhPrefix + khoá ảnh, nội dung là byte gốc của ảnh.
+
+/**
+ * Mọi tệp ảnh trong thư mục: Map khoá ảnh -> id tệp. Đọc hết các trang (một thư mục có thể có hàng trăm ảnh; trang
+ * mặc định của Drive chỉ 100 tệp). Lọc lại đúng tiền tố như listByPrefix. Hai tệp cùng khoá (hai máy đẩy cùng lúc)
+ * thì giữ tệp gặp trước: cùng khoá là cùng nội dung.
+ */
+export async function listAnh(token, folderId) {
+  const q = `'${qEsc(folderId)}' in parents and name contains '${qEsc(CONFIG.anhPrefix)}' and trashed=false`;
+  const ra = new Map();
+  let trang = '';
+  do {
+    const r = await call(token, `/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)`
+      + (trang ? `&pageToken=${encodeURIComponent(trang)}` : ''));
+    for (const f of r.files || []) {
+      if (typeof f.name !== 'string' || !f.name.startsWith(CONFIG.anhPrefix)) continue;
+      const khoa = f.appProperties?.bstrAnh || f.name.slice(CONFIG.anhPrefix.length);
+      if (!ra.has(khoa)) ra.set(khoa, f.id);
+    }
+    trang = r.nextPageToken || '';
+  } while (trang);
+  return ra;
+}
+
+/** Đưa byte gốc của một ảnh lên thành tệp ảnh (mimeType của ảnh, nhãn bstrAnh = khoá; khoá là băm nội dung nên ngắn). */
+export async function uploadAnh(token, folderId, khoa, bytes, mime) {
+  const boundary = 'bstr' + Math.random().toString(36).slice(2);
+  const loai = mime || 'application/octet-stream';
+  const meta = { name: CONFIG.anhPrefix + khoa, parents: [folderId], mimeType: loai, appProperties: { bstrAnh: khoa } };
+  const head =
+    `--${boundary}\r\n` +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(meta) + '\r\n' +
+    `--${boundary}\r\n` +
+    `Content-Type: ${loai}\r\n\r\n`;
+  return call(token, `${UPLOAD}/files?uploadType=multipart&fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body: new Blob([head, bytes, `\r\n--${boundary}--`]),
+  });
+}
+
+/** Byte gốc của một tệp ảnh. */
+export async function downloadAnh(token, fileId) {
+  const res = await fetch(`${API}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Drive tải ảnh lỗi ${res.status}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
