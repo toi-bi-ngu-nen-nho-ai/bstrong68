@@ -196,7 +196,11 @@ async function luu({ force, background }) {
     writeState({ fileId: up.id, savedAt: payload.savedAt, deviceId: deviceId(), fingerprint: vanTay, soTaiLieu, daGop: state?.daGop || [] });
 
     // Tối đa CONFIG.maxDevices thiết bị, mỗi thiết bị CONFIG.keepVersions bản; thiết bị lâu không lưu nhất bị bỏ.
-    await pruneVersions(token, await listVersions(token, await folder()));
+    // Trừ thiết bị còn bản chưa gộp: máy đó có thể không mở lại nữa (máy mượn, cửa sổ ẩn danh), dọn là mất hẳn phần
+    // của nó. gopNgay dọn đủ sau khi đã gộp.
+    const chuaGop = new Set(canGop.map((f) => f.appProperties?.bstrThietBi || ''));
+    const files = await listVersions(token, await folder());
+    await pruneVersions(token, files.filter((f) => !chuaGop.has(f.appProperties?.bstrThietBi || '')));
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
     clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa
