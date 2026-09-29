@@ -3,6 +3,8 @@ import './bstr-services.js?bstr-proxy=1';
 
 try {
   globalThis.bstrMigrationReport = await migrateLocalData();
+  // Khoá kho kẹt (Phần A2): dọn TRƯỚC khi nạp app, không thì worker kho chờ tới 30 giây rồi tài liệu mới hiện. Không chặn quá 2 giây.
+  await import('./bstr-khoa-ket.js?bstr-kk=1').then((m) => Promise.race([m.giaiPhongKhoaKet(), new Promise((r) => setTimeout(r, 2000))])).catch((e) => console.warn('[bstr] chưa dọn được khoá kho kẹt', e));
   const bundles = JSON.parse(document.getElementById('bstr-bundles').textContent);
   for (const src of bundles) {
     await new Promise((resolve,reject) => {
