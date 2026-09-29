@@ -3,7 +3,7 @@ import * as sync from './sync.js';
 import * as store from './store.js';
 import * as auth from './auth.js';
 import { shareFile, listShared, ensureFolder, listShares, quyenCuaTep } from './drive.js';
-import * as share from './share.js?bstr-login=4';
+import * as share from './share.js?bstr-login=5';
 import { setStatus, showNhan } from './ui.js';
 import { createLoginFlow } from './login.js?bstr-login=3';
 import { linkNhan, createNhanFlow } from './nhan.js';

@@ -208,24 +208,29 @@ async function thuLai(viec) {
 
 /**
  * Mọi tệp ảnh trong thư mục: Map khoá ảnh -> id tệp. Đọc hết các trang (một thư mục có thể có hàng trăm ảnh; trang
- * mặc định của Drive chỉ 100 tệp). Lọc lại đúng tiền tố như listByPrefix. Hai tệp cùng khoá (hai máy đẩy cùng lúc)
- * thì giữ tệp gặp trước: cùng khoá là cùng nội dung.
+ * mặc định của Drive chỉ 100 tệp). Lọc lại đúng tiền tố như listByPrefix. Hai tệp cùng khoá (hai máy cùng đẩy; tải lên
+ * xong mà mất phản hồi rồi thử lại) cùng nội dung: giữ tệp tạo sớm nhất (cùng giờ thì id nhỏ hơn), máy nào cũng chọn
+ * cùng một tệp dù Drive liệt kê theo thứ tự nào; id các tệp còn lại vào mảng trung (nếu có) để dayAnh dọn.
  */
-export async function listAnh(token, folderId) {
+export async function listAnh(token, folderId, trung = null) {
   const q = `'${qEsc(folderId)}' in parents and name contains '${qEsc(CONFIG.anhPrefix)}' and trashed=false`;
-  const ra = new Map();
+  const giu = new Map();
   let trang = '';
   do {
-    const r = await thuLai(() => call(token, `/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)`
+    const r = await thuLai(() => call(token, `/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties,createdTime)`
       + (trang ? `&pageToken=${encodeURIComponent(trang)}` : '')));
     for (const f of r.files || []) {
       if (typeof f.name !== 'string' || !f.name.startsWith(CONFIG.anhPrefix)) continue;
       const khoa = f.appProperties?.bstrAnh || f.name.slice(CONFIG.anhPrefix.length);
-      if (!ra.has(khoa)) ra.set(khoa, f.id);
+      const cu = giu.get(khoa);
+      if (!cu) { giu.set(khoa, f); continue; }
+      const somHon = (f.createdTime || '') < (cu.createdTime || '') || ((f.createdTime || '') === (cu.createdTime || '') && f.id < cu.id);
+      trung?.push((somHon ? cu : f).id);
+      if (somHon) giu.set(khoa, f);
     }
     trang = r.nextPageToken || '';
   } while (trang);
-  return ra;
+  return new Map([...giu].map(([khoa, f]) => [khoa, f.id]));
 }
 
 /** Đưa byte gốc của một ảnh lên thành tệp ảnh (mimeType của ảnh, nhãn bstrAnh = khoá; khoá là băm nội dung nên ngắn). */

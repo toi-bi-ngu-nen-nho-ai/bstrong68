@@ -36,20 +36,26 @@ const u8ToBinaryString = (u8) => {
 
 const dbName = (id) => `local:workspace:${id}`;
 
+// Khoá ảnh của app: băm 32 byte viết base64 (44 ký tự, hết bằng '=').
+const DANG_KHOA = /[A-Za-z0-9+/_-]{43}=/g;
+const laDangKhoa = (k) => typeof k === 'string' && k.length === 44 && /^[A-Za-z0-9+/_-]{43}=$/.test(k);
+
 /**
  * blobKey xuất hiện dạng chuỗi con trong bytes snapshot Yjs của tài liệu nào
  * thì coi tài liệu đó "sở hữu" blob ấy — khoá blob là chuỗi ngẫu nhiên dài nên
  * gần như không thể trùng tình cờ. Trả về Map<blobKey, Set<docId>>.
- * ponytail: quét O(số tài liệu × số blob) bằng String#includes — ổn với vài
- * chục tài liệu mẫu; workspace phình to hàng nghìn tài liệu thì đổi sang
- * Aho-Corasick quét một lượt.
+ * Khoá dạng của app: quét mỗi tài liệu một lượt tìm mọi chuỗi có dạng khoá rồi tra bảng (dò từng khoá qua từng tài liệu
+ * là O(tài liệu × ảnh): máy mới 1000 tài liệu, 2000 ảnh mất 3 giây, khựng trang). Khoá khác dạng (gói chia sẻ mang
+ * nguyên văn, tài liệu mẫu) thì dò như cũ.
  */
 function blobOwners(snapshotRecords, blobKeys) {
   const owners = new Map(blobKeys.map((k) => [k, new Set()]));
+  const khacDang = blobKeys.filter((k) => !laDangKhoa(k));
   for (const snap of snapshotRecords) {
     if (!snap.bin || !snap.bin.length) continue;
     const text = u8ToBinaryString(snap.bin);
-    for (const key of blobKeys) {
+    for (const [k] of text.matchAll(DANG_KHOA)) owners.get(k)?.add(snap.docId);
+    for (const key of khacDang) {
       if (text.includes(key)) owners.get(key).add(snap.docId);
     }
   }
@@ -83,7 +89,9 @@ function readSchema(db) {
 // kemAnh: chỉ bản sao lưu của máy chưa từng đồng bộ mang cả dữ liệu ảnh (blobData): đó là đường duy nhất restore xoá
 // workspace trên máy (thayThe bỏ workspace mẫu), còn ảnh của máy đó chưa từng đẩy lên Drive. true: mọi workspace;
 // danh sách id: chỉ các workspace đó (những workspace sắp bị bỏ).
-export async function exportAll({ kemAnh = false } = {}) {
+// maHoa false: bản ghi để nguyên (Uint8Array, Date), cho lượt lưu lấy vân tay mà khỏi mã hoá cả máy (3/4 thời gian xuất);
+// chỉ mã hoá (maHoa) khi thật sự tải lên.
+export async function exportAll({ kemAnh = false, maHoa = true } = {}) {
   const workspaces = [];
   // Rỗng thì mọi điều kiện taiLieuMauSet.size bên dưới đều false — hành vi
   // giống hệt trước khi có tính năng này, không đọc thêm, không lọc thêm gì.
@@ -122,7 +130,7 @@ export async function exportAll({ kemAnh = false } = {}) {
         } else if (boQuaBlobKeys && boQuaBlobKeys.size && (storeName === 'blobs' || storeName === 'blobData')) {
           values = values.filter((v) => !boQuaBlobKeys.has(v.key));
         }
-        stores[storeName] = values.map(encode);
+        stores[storeName] = maHoa ? values.map(encode) : values;
       }
       const payload = {
         id,

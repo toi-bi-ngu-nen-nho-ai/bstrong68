@@ -1,5 +1,5 @@
 import { CONFIG, LS } from './config.js';
-import { exportAll, restore, deviceId, taiLieuMauBundle, laKhongGianMau } from './store.js';
+import { exportAll, restore, deviceId, taiLieuMauBundle, laKhongGianMau, maHoa } from './store.js';
 import { getToken, isSignedIn, signIn, signOut } from './auth.js';
 import {
   ensureFolder, uploadJson, listVersions, listBackups, downloadJson, pruneVersions, pruneBackups,
@@ -55,8 +55,10 @@ function storeSig(records) {
   for (const r of records) {
     const bin = r && (r.bin || r.data);
     if (bin && typeof bin.__u8 === 'string') soByte += bin.__u8.length;
+    // Bản chưa mã hoá (exportAll({ maHoa: false })): cùng số như sau khi mã hoá (base64 dài 4 * ceil(n / 3), ngày ISO).
+    else if (bin instanceof Uint8Array || bin instanceof ArrayBuffer) soByte += 4 * Math.ceil(bin.byteLength / 3);
     const at = r && (r.updatedAt || r.createdAt || r.timestamp);
-    const iso = at && typeof at.__date === 'string' ? at.__date : '';
+    const iso = at && typeof at.__date === 'string' ? at.__date : at instanceof Date && Number.isFinite(+at) ? at.toISOString() : '';
     if (iso > moiNhat) moiNhat = iso;
   }
   return `${records.length}:${soByte}:${moiNhat}`;
@@ -170,11 +172,12 @@ function baoCanGop(canGop) {
   return true;
 }
 
-export async function saveNow({ force = false, background = false } = {}) {
+/** dsBan: danh sách bản lưu start() vừa đọc, khỏi hỏi Drive lần nữa. */
+export async function saveNow({ force = false, background = false, dsBan = null } = {}) {
   if (busy) return;
   busy = true;
   try {
-    await khoaDongBo(() => luu({ force, background }));
+    await khoaDongBo(() => luu({ force, background, dsBan }));
   } finally {
     busy = false;
   }
@@ -190,17 +193,18 @@ function baoDriveDay(e) {
   return true;
 }
 
-async function luu({ force, background }) {
+async function luu({ force, background, dsBan }) {
   try {
     if (!background) setStatus('Đang lưu lên Drive...');
     const token = await ensureToken();
     const state = readState();
     // Tự gộp (28/09): Drive có bản mới hơn của máy khác thì VẪN lưu phần máy này (gộp về sau lấy đủ cả hai bên),
     // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
-    const canGop = banCanGop(await listVersions(token, await folder()), state, deviceId());
+    const canGop = banCanGop(dsBan || await listVersions(token, await folder()), state, deviceId());
     clearStatus();
 
-    const payload = await exportAll();
+    // Chưa mã hoá: đủ lấy vân tay và đếm tài liệu. Phần lớn lượt lưu nền không đổi gì; mã hoá cả máy chỉ khi tải lên.
+    const payload = await exportAll({ maHoa: false });
 
     // Máy này tự bảo vệ mình: không còn gì trong máy thì tuyệt đối không ghi đè.
     if (payload.workspaces.length === 0) {
@@ -212,6 +216,9 @@ async function luu({ force, background }) {
     const soTaiLieu = docCount(payload);
 
     if (!force && state && state.fingerprint === vanTay) {
+      // Chữ không đổi: lượt lưu tiền cảnh (mở app, bấm lưu) vẫn đẩy ảnh Drive còn thiếu (tệp ảnh bị xoá tay trên Drive:
+      // cảnh báo "Thiếu k ảnh" bảo mở app trên máy có ảnh). Lượt lưu nền thì thôi, khỏi tốn lệnh Drive mỗi 2 phút.
+      if (!background) await dayAnh(token, await folder(), { baoTienDo: (n, tong) => setStatus(`Đang tải ảnh lên ${n}/${tong}`) });
       if (!baoCanGop(canGop) && !background) setStatus('Không có thay đổi mới');
       return;
     }
@@ -233,7 +240,7 @@ async function luu({ force, background }) {
     // thiếu ảnh. Đứt giữa chừng thì ném lỗi (báo "Chưa lưu được…", tự thử lại), lần sau chỉ đẩy phần còn thiếu. Lần đầu có
     // thể lâu: báo tiến độ.
     await dayAnh(token, await folder(), { baoTienDo: (n, tong) => setStatus(`Đang tải ảnh lên ${n}/${tong}`) });
-    const up = await taiLenBanMayNay(token, payload);
+    const up = await taiLenBanMayNay(token, { ...payload, workspaces: payload.workspaces.map((ws) => ({ ...ws, stores: maHoa(ws.stores) })) });
     writeState({ fileId: up.id, savedAt: payload.savedAt, deviceId: deviceId(), fingerprint: vanTay, soTaiLieu, daGop: state?.daGop || [] });
 
     // Tối đa CONFIG.maxDevices thiết bị, mỗi thiết bị CONFIG.keepVersions bản; thiết bị lâu không lưu nhất bị bỏ.
@@ -625,15 +632,17 @@ export async function start({ onSkip } = {}) {
     // Tự gộp: thành công thì trang tải lại. Lỗi thì giữ lời báo, lượt lưu nền 2 phút sau sẽ lưu phần máy này.
     const gop = banCanGop(files, readState(), deviceId()).length ? await gopVoiDrive() : 'khong-doi';
     if (gop === 'xong') return true;
+    // Không chờ: ảnh về dần sau khi chữ đã đọc và gõ được, không chờ lượt lưu dưới đây (có khi cả chục lệnh Drive nối
+    // tiếp). Thông báo của nó là thông báo ngắn và ô cảnh báo riêng, clearStatus của lượt lưu không xoá.
+    taiAnhNen();
     if (gop === 'khong-doi') {
       // Không có gì cần gộp (hay gộp mà máy này không đổi gì): lưu ngay một lần ở tiền cảnh. Lần lưu nền không được mở
       // hộp thoại, nên khi số tài liệu ít đi thì chỉ lần lưu này hỏi được người dùng.
-      await saveNow({ force: !files.length });
+      await saveNow({ force: !files.length, dsBan: files });
     }
 
     // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay.
     baoDaKhoiPhuc();
-    taiAnhNen(); // không chờ: ảnh về dần sau khi chữ đã đọc và gõ được
     setInterval(() => {
       saveNow({ background: true });
       if (conAnhCanTai) taiAnhNen();

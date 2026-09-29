@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { ensureToken, folder, saoLuuTruocKhiGhiDe } from './sync.js';
 import { uploadJson, moChoMoiNguoiDoc, taiJsonCongKhai, listShares, prune } from './drive.js';
 import { setStatus } from './ui.js';
+import { taiAnhThieu } from './anh.js';
 
 /**
  * Chia sẻ MỘT tài liệu kiểu AnkiWeb: A đưa gói lên Drive và lấy đường dẫn công
@@ -161,6 +162,13 @@ function locMeta(raw, docId) {
 export async function chiaSeTaiLieu(docId) {
   if (typeof docId !== 'string' || !docId) throw new Error('chiaSeTaiLieu(docId): thiếu docId');
   setStatus('Đang đóng gói tài liệu để chia sẻ...');
+  // Ảnh là tệp riêng trên Drive (tự gộp đợt 2): máy có thể chưa tải xong byte ảnh của tài liệu này (máy mới, vừa gộp).
+  // Tải trước, không thì người nhận thiếu ảnh mãi. Hỏng (mất mạng) thì vẫn chia sẻ với ảnh máy có.
+  try {
+    await taiAnhThieu(await ensureToken(), await folder(), { chiTaiLieu: docId });
+  } catch (e) {
+    console.warn('[drive-sync] tải ảnh còn thiếu trước khi chia sẻ thất bại, gói chỉ mang ảnh máy có', e);
+  }
   const Y = await napYjs();
   const nguon = await store.nguonChiaSe(docId);
 

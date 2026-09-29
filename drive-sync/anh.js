@@ -2,7 +2,7 @@
 // (blobData) đi riêng: mỗi ảnh một tệp, đẩy một lần, máy khác tải nền sau khi đã đọc và gõ được.
 import { CONFIG } from './config.js';
 import { anhCoDuLieu, docAnh, ghiAnh, anhThieu } from './store.js';
-import { listAnh, uploadAnh, downloadAnh } from './drive.js';
+import { listAnh, uploadAnh, downloadAnh, deleteFile } from './drive.js';
 
 /**
  * Chạy các việc, tối đa n việc một lúc (bắt đầu theo thứ tự). Kết quả theo thứ tự: { ok, value } hoặc { ok: false, error }.
@@ -39,10 +39,11 @@ export const khoaAnhHopLe = (key) => typeof key === 'string' && new TextEncoder(
  * nó SAU khi các ảnh khác đã xong: người gọi không được lưu bản chữ (máy khác sẽ gộp được chữ mà thiếu ảnh), lần sau
  * chỉ đẩy phần còn thiếu. Trả số ảnh đã đẩy; baoTienDo(n, tong) sau mỗi khoá xong (kể cả hỏng hay không nơi nào có byte).
  * Khoá lạ (khoaAnhHopLe) thì bỏ qua, không thì hỏng mãi và không lưu được bản chữ nào nữa. Một khoá có ở nhiều workspace
- * thì lấy byte ở workspace đầu tiên có; không đâu có byte thì không đẩy.
+ * thì lấy byte ở workspace đầu tiên có; không đâu có byte thì không đẩy. Xong thì dọn tệp ảnh trùng khoá trên Drive.
  */
 export async function dayAnh(token, folderId, { baoTienDo = () => {} } = {}) {
-  const coTren = await listAnh(token, folderId);
+  const trung = [];
+  const coTren = await listAnh(token, folderId, trung);
   const canDay = new Map(); // khoá -> mọi { wsId, mime } có khoá đó
   for (const a of await anhCoDuLieu()) {
     if (!khoaAnhHopLe(a.key)) console.warn('[drive-sync] bỏ qua ảnh khoá không hợp lệ', a.key);
@@ -58,6 +59,11 @@ export async function dayAnh(token, folderId, { baoTienDo = () => {} } = {}) {
       return;
     }
   }), CONFIG.anhSongSong, baoTienDo);
+  // Tệp ảnh trùng khoá: xoá bản thừa, giữ tệp listAnh chọn (máy nào cũng chọn cùng tệp, nên hai máy cùng dọn không xoá hết).
+  // Máy khác xoá trước (404) là xong; hỏng khác thì lần sau dọn tiếp.
+  for (const id of trung) {
+    await deleteFile(token, id).catch((e) => e?.status === 404 || console.warn('[drive-sync] chưa xoá được tệp ảnh trùng', id, e));
+  }
   const hong = kq.find((r) => !r.ok);
   if (hong) throw hong.error;
   return daDay;
