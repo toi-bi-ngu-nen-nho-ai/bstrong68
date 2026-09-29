@@ -3,6 +3,9 @@
   Content-Security-Policy: frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+# Service worker: trình duyệt luôn hỏi bản mới của chính nó (luật trong sw-luat.js mang cờ ?bstr-sw=).
+/sw.js
+  Cache-Control: no-cache
 
 # Chi trang HTML: no-transform de Cloudflare khong tu chen beacon.min.js (RUM, static.cloudflareinsights.com).
 # KHONG dat cho /*: no-transform tat luon nen brotli, JS nang gap 5 lan.
