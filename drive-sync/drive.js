@@ -190,6 +190,7 @@ export async function taiJsonCongKhai(fileId, shareUrl) {
 
 /**
  * Lỗi tạm của Drive (429, 5xx, 403 quá hạn mức gọi) khi đẩy/tải hàng trăm ảnh: chờ theo CONFIG.anhChoThuLai rồi thử lại.
+ * Khoảng chờ nhân hệ số ngẫu nhiên 0,5–1,5: 6 ảnh cùng gặp Drive bận không thử lại cùng một nhịp (lại cùng bị từ chối).
  * Lỗi khác (kể cả 403 Drive đầy) ném ngay, nguyên văn. Chỉ dùng cho ba hàm ảnh dưới đây.
  */
 async function thuLai(viec) {
@@ -200,7 +201,7 @@ async function thuLai(viec) {
       const tam = [429, 500, 502, 503, 504].includes(e?.status)
         || (e?.status === 403 && /rateLimitExceeded|userRateLimitExceeded/.test(e.message));
       if (!tam || lan >= CONFIG.anhChoThuLai.length) throw e;
-      await new Promise((r) => setTimeout(r, CONFIG.anhChoThuLai[lan]));
+      await new Promise((r) => setTimeout(r, CONFIG.anhChoThuLai[lan] * (0.5 + Math.random())));
     }
   }
 }
@@ -260,13 +261,7 @@ export async function uploadAnh(token, folderId, khoa, bytes, mime) {
   }));
 }
 
-/** Byte gốc của một tệp ảnh. */
-export async function downloadAnh(token, fileId) {
-  return thuLai(async () => {
-    const res = await fetch(`${API}/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw Object.assign(new Error(`Drive tải ảnh lỗi ${res.status}`), { status: res.status });
-    return new Uint8Array(await res.arrayBuffer());
-  });
+/** Byte gốc của một tệp ảnh. Qua call(): câu lỗi mang nội dung Drive trả về, thuLai mới nhận ra 403 quá hạn mức gọi. */
+export function downloadAnh(token, fileId) {
+  return thuLai(() => call(token, `/files/${fileId}?alt=media`, {}, async (res) => new Uint8Array(await res.arrayBuffer())));
 }

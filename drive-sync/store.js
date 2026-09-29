@@ -709,8 +709,9 @@ export async function ghiAnh(wsId, key, bytes) {
 /**
  * Ảnh máy này cần mà chưa có dữ liệu: bản ghi blobs chưa đánh dấu xoá mà blobData không có. Kèm tài liệu nhắc tới ảnh
  * (quét snapshot như blobOwners) và lần sửa gần nhất của các tài liệu đó, để anh.js xếp thứ tự tải.
- * ponytail: đọc cả snapshots mỗi lần (cùng giao dịch với blobs, blobData) dù không thiếu ảnh nào, như exportAll mỗi lượt
- * lưu; quét O(số tài liệu × số ảnh thiếu) như blobOwners, chỉ khi có ảnh thiếu.
+ * blobs và khoá blobData đọc chung một giao dịch (ảnh ghi giữa hai lần đọc không bị báo thiếu). snapshots chỉ đọc khi có
+ * ảnh thiếu (mọi lần mở app đều gọi; đọc hết tài liệu tốn như một lượt lưu), giao dịch riêng: chỉ để biết tài liệu nào
+ * nhắc tới ảnh và thứ tự tải, không đổi số ảnh thiếu. Quét O(số tài liệu × số ảnh thiếu) như blobOwners.
  */
 export async function anhThieu() {
   const ra = [];
@@ -718,10 +719,11 @@ export async function anhThieu() {
     if (!(await dbExists(dbName(wsId)))) continue;
     const db = await req(indexedDB.open(dbName(wsId)));
     try {
-      const { blobs, blobData, snapshots: snaps } = await tatCa(db, { blobs: 'getAll', blobData: 'getAllKeys', snapshots: 'getAll' });
+      const { blobs, blobData } = await tatCa(db, { blobs: 'getAll', blobData: 'getAllKeys' });
       const co = new Set(blobData);
       const thieu = blobs.filter((b) => !b.deletedAt && !co.has(b.key)).map((b) => b.key);
       if (!thieu.length) continue;
+      const { snapshots: snaps } = await tatCa(db, { snapshots: 'getAll' });
       const owners = blobOwners(snaps, thieu);
       const luc = new Map(snaps.map((s) => [s.docId, +new Date(s.updatedAt || s.createdAt || 0)]));
       for (const key of thieu) {

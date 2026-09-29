@@ -207,9 +207,12 @@ export async function showShrinkWarning({ oldCount, newCount }) {
 
 // Hai loại thông báo: `banner` (trạng thái, ở lại tới khi trạng thái đổi hoặc bấm ×) và `flash` (thông báo ngắn, tự ẩn
 // sau FLASH_MS). Chưa mở tài liệu thì không có khung: cả hai chờ; thông báo ngắn quá hạn thì bỏ.
+// Thêm `canhBaoAnh` (setCanhBaoAnh): cảnh báo ảnh thiếu trên Drive, ô riêng để lượt lưu (clearStatus) không xoá nó.
 const FLASH_MS = 4000;
 let banner = null;
 let flash = null;
+let canhBaoAnh = null;
+let daAnCanhBaoAnh = false; // đã bấm ×: không hiện lại tới lần mở app sau
 let flashTimer = null;
 let slotWatch = null;
 let shownIn = null;
@@ -256,10 +259,11 @@ function render() {
     const items = [];
     if (flash) items.push(bannerEl(flash, () => { flash = null; render(); }));
     if (banner) items.push(bannerEl(banner, clearStatus));
+    if (canhBaoAnh) items.push(bannerEl({ text: canhBaoAnh, level: 'warn' }, () => { daAnCanhBaoAnh = true; setCanhBaoAnh(null); }));
     slot.replaceChildren(...items);
   }
   // Chỉ theo dõi DOM khi còn thứ để hiện: khung đổi theo tài liệu (hoặc chưa có) thì vẽ lại.
-  const waiting = !!(banner || flash);
+  const waiting = !!(banner || flash || canhBaoAnh);
   if (waiting && !slotWatch) {
     slotWatch = new MutationObserver(() => { if (currentSlot() !== shownIn) render(); });
     slotWatch.observe(document.body, { childList: true, subtree: true });
@@ -293,5 +297,11 @@ export function setStatus(text, { persist = false, level = 'info', action = null
 /** Xoá băng rôn trạng thái khi tình huống đã được giải quyết (hoặc người dùng bấm ×). */
 export function clearStatus() {
   banner = null;
+  render();
+}
+
+/** Cảnh báo ảnh thiếu trên Drive (null thì gỡ). clearStatus không xoá nó; bấm × thì ẩn tới lần mở app sau. */
+export function setCanhBaoAnh(text) {
+  canhBaoAnh = daAnCanhBaoAnh ? null : text;
   render();
 }

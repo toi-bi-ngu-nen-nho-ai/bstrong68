@@ -6,7 +6,7 @@ import {
   listSelfTest, deleteFile,
 } from './drive.js';
 import {
-  showSignIn, showShrinkWarning, setStatus, clearStatus, moManChan,
+  showSignIn, showShrinkWarning, setStatus, clearStatus, moManChan, setCanhBaoAnh,
 } from './ui.js';
 import { gopPayload, banCanGop } from './gop.js';
 import { dayAnh, taiAnhThieu } from './anh.js';
@@ -199,7 +199,6 @@ async function luu({ force, background }) {
     // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
     const canGop = banCanGop(await listVersions(token, await folder()), state, deviceId());
     clearStatus();
-    baoThieuAnh();
 
     const payload = await exportAll();
 
@@ -246,7 +245,6 @@ async function luu({ force, background }) {
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
     clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa
-    baoThieuAnh(); // trừ ảnh còn thiếu trên Drive: lưu xong vẫn thiếu
     if (!baoCanGop(canGop) && !background) setStatus('Đã lưu lên Drive');
   } catch (e) {
     console.error('[drive-sync] lưu thất bại', e);
@@ -389,31 +387,28 @@ async function gopNgay() {
 /** Tài liệu đang mở (địa chỉ /workspace/<không gian>/<tài liệu>), để tải ảnh của nó trước. */
 const docDangMo = () => globalThis.location?.pathname?.match(/^\/workspace\/[^/]+\/([^/?#]+)/)?.[1] || null;
 
-let soAnhThieu = 0; // số ảnh thiếu trên Drive ở lần tải nền gần nhất (taiAnhNen đặt)
-
-/** Cảnh báo ảnh thiếu trên Drive khi còn thiếu. luu gọi lại sau mỗi clearStatus(): cảnh báo ở lại tới khi hết thiếu. */
-function baoThieuAnh() {
-  if (soAnhThieu) setStatus(`Thiếu ${soAnhThieu} ảnh trên Drive: mở app trên máy đã thêm ảnh để tải lên.`, { persist: true, level: 'warn' });
-}
+let conAnhCanTai = false; // lần tải nền gần nhất còn ảnh thiếu trên Drive, ảnh tải hỏng hay hỏng hẳn: lượt lưu nền tải lại
 
 /**
  * Tải nền ảnh máy này còn thiếu (sau khi gộp hay lấy dữ liệu từ Drive), báo "Đang tải ảnh n/N". Một tab làm một lúc
- * (khoá riêng 'bstr-drive-anh', không giữ khoá đồng bộ: lượt lưu vẫn chạy). Hỏng thì lần mở app sau tải tiếp.
+ * (khoá riêng 'bstr-drive-anh', không giữ khoá đồng bộ: lượt lưu vẫn chạy). Còn thiếu hay hỏng thì lượt lưu nền sau
+ * (2 phút) tải lại: máy khác có thể đã đẩy ảnh lên, Drive hết bận. Cảnh báo "Thiếu k ảnh" theo lần tải gần nhất.
  */
 function taiAnhNen() {
   const viec = async () => {
     try {
-      const { daTai, thieuTrenDrive } = await taiAnhThieu(await ensureToken(), await folder(), {
+      const { daTai, thieuTrenDrive, loi } = await taiAnhThieu(await ensureToken(), await folder(), {
         docDangMo: docDangMo(),
         baoTienDo: (n, tong) => setStatus(`Đang tải ảnh ${n}/${tong}`),
       });
       // App không tự hiện ảnh về muộn trong tài liệu đang mở (Task 1): người dùng tưởng ảnh hỏng mà xoá ô ảnh thì xoá cả
       // trên mọi máy. Thông báo ngắn nằm ô riêng, không đè cảnh báo "Thiếu k ảnh" (ui.js).
       if (daTai) setStatus('Đã tải xong ảnh. Mở lại tài liệu nếu còn ô ảnh trống.');
-      soAnhThieu = thieuTrenDrive;
-      baoThieuAnh();
+      setCanhBaoAnh(thieuTrenDrive ? `Thiếu ${thieuTrenDrive} ảnh trên Drive: mở app trên máy đã thêm ảnh để tải lên.` : null);
+      conAnhCanTai = thieuTrenDrive + loi > 0;
     } catch (e) {
-      console.error('[drive-sync] tải ảnh thất bại, lần mở app sau tải tiếp', e);
+      console.error('[drive-sync] tải ảnh thất bại, lượt lưu nền sau tải tiếp', e);
+      conAnhCanTai = true;
     }
   };
   const locks = globalThis.navigator?.locks;
@@ -639,7 +634,10 @@ export async function start({ onSkip } = {}) {
     // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay.
     baoDaKhoiPhuc();
     taiAnhNen(); // không chờ: ảnh về dần sau khi chữ đã đọc và gõ được
-    setInterval(() => saveNow({ background: true }), CONFIG.autoSaveMs);
+    setInterval(() => {
+      saveNow({ background: true });
+      if (conAnhCanTai) taiAnhNen();
+    }, CONFIG.autoSaveMs);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') saveNow({ background: true });
     });
