@@ -15,8 +15,9 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
 const tot = (res, laTrang = false) =>
   res.ok && res.type === 'basic' && !res.redirected && (laTrang || !/^text\/html/i.test(res.headers.get('content-type') || ''));
 // Mất mạng mà chưa cất đúng URL này: dùng bản cất sẵn cùng đường dẫn (khác cờ), ví dụ tệp tải trước khi service worker kịp
-// điều khiển trang, hay tệp worker nạp với cờ riêng. Có mạng thì không bao giờ đi đường này.
-const duPhong = async (kho, req, loi) => (await kho.match(req, { ignoreSearch: true, ignoreVary: true })) || Promise.reject(loi);
+// điều khiển trang, hay tệp worker nạp với cờ riêng. Có mạng thì không bao giờ đi đường này. Nhiều bản (lên bản mới, kho chưa
+// dọn bản cũ) thì lấy bản cất sau cùng.
+const duPhong = async (kho, req, loi) => (await kho.matchAll(req, { ignoreSearch: true, ignoreVary: true })).pop() || Promise.reject(loi);
 
 async function trang(e) {
   const kho = await caches.open(KHO_UNG_DUNG);
@@ -92,6 +93,7 @@ async function catSan(dung) {
   const coSan = new Set((await kho.keys()).map((r) => r.url));
   const can = [...giu].filter((u) => !coSan.has(u) && u !== new URL(DA_DON, origin).href);
   let thieu = 0;
+  let hetCho = false;
   let i = 0;
   const tho = async () => {
     while (i < can.length) {
@@ -103,14 +105,16 @@ async function catSan(dung) {
         await kho.put(u, r);
       } catch (loi) {
         if (trongDs.has(u)) thieu++;
+        if (loi?.name === 'QuotaExceededError') hetCho = true;
         console.warn('[bstr] chưa cất được', u, loi);
       }
     }
   };
   await Promise.all(Array.from({ length: CAT_SONG_SONG }, tho));
-  if (thieu) return; // lần mở sau cất tiếp phần thiếu, rồi mới dọn
+  // Lần mở sau cất tiếp phần thiếu, rồi mới dọn. Trừ khi hết chỗ: dọn ngay, bộ nhớ đệm dùng chung hạn mức với dữ liệu tài liệu.
+  if (thieu && !hetCho) return;
   const daDon = await kho.match(DA_DON);
-  if (daDon && (await daDon.text()) === phien) return;
+  if (!hetCho && daDon && (await daDon.text()) === phien) return;
   for (const r of await kho.keys()) if (!giu.has(r.url)) await kho.delete(r);
   await kho.put(DA_DON, new Response(phien));
 }
