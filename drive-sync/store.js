@@ -329,7 +329,7 @@ async function boSungTaiLieuMau(wsId) {
 export async function prepareRestore(payload) {
   // Validate EVERY workspace before creating a DB or clearing data.
   try {
-    payload = prepareBackup(payload).payload;
+    payload = prepareBackup(payload, { maHoa: false }).payload; // đã giải mã: decode ở dưới để nguyên, không giải mã lại
     for (const ws of payload.workspaces) await validateRestoreTarget(ws);
   } catch (error) {
     if (error.code === 'BSTR_BACKUP_INVALID') throw error;

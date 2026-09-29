@@ -314,7 +314,8 @@ async function gopNgay() {
     // không tải lên, không tải lại: hai máy không ai sửa gì thì không gộp qua lại mãi.
     const mayNay = await exportAll();
     const vao = thayThe ? await boKhongGianMau(mayNay) : mayNay;
-    const { taiLieuGop, wsMoi, anhGop } = gopPayload(vao, cacBan).thongKe;
+    const dau = gopPayload(vao, cacBan);
+    const { taiLieuGop, wsMoi, anhGop } = dau.thongKe;
     if (!taiLieuGop && !wsMoi && !anhGop && vao.workspaces.length === mayNay.workspaces.length) {
       writeState({ ...(state || {}), deviceId: deviceId(), daGop });
       dong();
@@ -340,9 +341,15 @@ async function gopNgay() {
     }
     // Xuất lại ngay trước khi ghi, không gọi mạng ở giữa: những gì ghi vào máy trong lúc tải bản sao lưu lên cũng được
     // gộp. Gộp trên bản xuất đầu thì restore (xoá rồi ghi lại cả kho) xoá mất chúng, và Yjs giấu luôn mọi sửa đổi sau đó.
-    let moi = await exportAll();
-    if (thayThe) moi = await boKhongGianMau(moi);
-    const { payload, thongKe } = gopPayload(moi, cacBan);
+    // Vân tay không đổi (không ai ghi gì từ lúc quyết định) thì dùng lại kết quả gộp lần đầu: gộp lại tốn cả giây khi
+    // nhiều tài liệu, sau màn chặn nhập.
+    let ketQua = dau;
+    if (fingerprint(await exportAll({ maHoa: false })) !== fingerprint(mayNay)) {
+      let moi = await exportAll();
+      if (thayThe) moi = await boKhongGianMau(moi);
+      ketQua = gopPayload(moi, cacBan);
+    }
+    const { payload, thongKe } = ketQua;
     daGhi = true;
     kenh?.postMessage('da-ghi'); // tab đang chờ: dữ liệu trên máy sắp đổi, khoá nhả thì tải lại
     const { bo } = await restore(payload, { thayThe });

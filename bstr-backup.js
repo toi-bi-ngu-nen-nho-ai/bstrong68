@@ -30,7 +30,10 @@ export function decodeBackupValue(value) {
   if (plain(value)) {
     if (Object.hasOwn(value,'__u8')) {
       if (Object.keys(value).length!==1 || typeof value.__u8!=='string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.__u8)) fail('Dữ liệu nhị phân trong bản sao lưu không hợp lệ');
-      return Uint8Array.from(atob(value.__u8),c=>c.charCodeAt(0));
+      // Vòng for, không Uint8Array.from(chuỗi, hàm): hàm gọi lại từng ký tự chậm gấp khoảng 37 lần (gộp 300 tài liệu 3 giây).
+      const binary = atob(value.__u8), bytes = new Uint8Array(binary.length);
+      for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
     }
     if (Object.hasOwn(value,'__date')) {
       if (Object.keys(value).length!==1 || typeof value.__date!=='string') fail('Ngày trong bản sao lưu không hợp lệ');
@@ -59,7 +62,9 @@ export function convertSnapshotInput(snapshot) {
 
 // Kiểm tra từng tài liệu trên trạng thái đã gộp snapshot + mọi update; giữ nguyên bản ghi gốc, tài liệu nào
 // cần đổi thì thêm một delta CRDT. Every workspace is prepared successfully before the caller can write any DB.
-export function prepareBackup(payload) {
+// maHoa false: trả bản đã giải mã (Uint8Array, Date) để restore ghi luôn, khỏi mã hoá lại cả bản rồi giải mã thêm hai lần
+// (1000 tài liệu: 2,8 giây sau màn chặn nhập).
+export function prepareBackup(payload, { maHoa = true } = {}) {
   try {
     if (!plain(payload) || payload.format!=='bstr-drive-sync/1' || !Array.isArray(payload.workspaces)) fail('Định dạng bản sao lưu không được hỗ trợ');
     const converted = decodeBackupValue(payload);
@@ -134,7 +139,7 @@ export function prepareBackup(payload) {
       if (updates.length) ws.stores.updates=updates;
       if (clocks.length) ws.stores.clocks=clocks;
     }
-    return {payload:encodeBackupValue(converted),documents,changes};
+    return {payload:maHoa ? encodeBackupValue(converted) : converted,documents,changes};
   } catch (cause) {
     const error = new Error(`Bản sao lưu không hợp lệ: ${cause.message}`,{cause});
     error.code='BSTR_BACKUP_INVALID';
