@@ -228,11 +228,32 @@ function createDb(name, version, schema) {
   });
 }
 
-async function writeWorkspace(ws) {
+/**
+ * Kế hoạch ghi một workspace của restore: { tên kho: { xoaHet, xoa: [khoá], ghi: [bản ghi] } }. Không có thayDoi (ghi cả bản) hay
+ * workspace mới: xoá sạch rồi ghi cả; ảnh (blobData) chỉ thêm: khoá ảnh là băm nội dung nên giữ ảnh đang có không bao giờ sai,
+ * xoá là mất ảnh chưa kịp đẩy lên Drive. Sau khi gộp (thayDoi của gopPayload): chỉ snapshot + clock của tài liệu đổi, xoá ĐÚNG
+ * các update đã gộp vào snapshot, thêm ảnh lấy từ bên kia. Không xoá sạch kho nào: kho của app có thể đang gộp update của một
+ * tài liệu không đổi (đọc, ghi snapshot, rồi xoá các update đã đọc) và xoá mất update ta vừa ghi lại; update app ghi sau lúc
+ * xuất cũng còn nguyên.
+ */
+export function keHoachGhi(ws, thayDoi) {
+  const s = ws.stores;
+  if (!thayDoi || thayDoi.moi) return Object.fromEntries(Object.keys(s).map((ten) => [ten, { xoaHet: ten !== 'blobData', xoa: [], ghi: s[ten] }]));
+  const doi = new Set(thayDoi.taiLieu);
+  const ke = {};
+  for (const ten of ['snapshots', 'clocks']) if (s[ten]) ke[ten] = { xoaHet: false, xoa: [], ghi: s[ten].filter((r) => doi.has(r.docId)) };
+  if (thayDoi.boCapNhat.length) ke.updates = { xoaHet: false, xoa: thayDoi.boCapNhat.map((u) => [u.docId, u.createdAt]), ghi: [] };
+  for (const [ten, ds] of Object.entries(thayDoi.anh)) ke[ten] = { xoaHet: false, xoa: [], ghi: ds };
+  return ke;
+}
+
+async function writeWorkspace(ws, thayDoi) {
   const name = dbName(ws.id);
+  const ke = keHoachGhi(ws, thayDoi);
+  const names = Object.keys(ke);
+  if (!names.length) return;
   const db = await req(indexedDB.open(name));
   try {
-    const names = Object.keys(ws.stores);
     const missing = names.filter((n) => !db.objectStoreNames.contains(n));
     if (missing.length) {
       throw new Error(`Cơ sở dữ liệu ${name} thiếu store: ${missing.join(', ')}`);
@@ -240,12 +261,11 @@ async function writeWorkspace(ws) {
     const tx = db.transaction(names, 'readwrite');
     const finished = txDone(tx);
     try {
-      for (const storeName of names) {
+      for (const [storeName, { xoaHet, xoa, ghi }] of Object.entries(ke)) {
         const os = tx.objectStore(storeName);
-        // Ảnh là tệp riêng (tự gộp đợt 2): bản lưu không mang blobData, còn bản cũ có mang thì chỉ thêm vào. Khoá ảnh là
-        // băm nội dung nên giữ ảnh đang có trên máy không bao giờ sai; xoá là mất ảnh chưa kịp đẩy lên Drive.
-        if (storeName !== 'blobData') os.clear();
-        for (const rec of ws.stores[storeName]) os.put(decode(rec));
+        if (xoaHet) os.clear();
+        for (const khoa of xoa) os.delete(decode(khoa));
+        for (const rec of ghi) os.put(decode(rec));
       }
     } catch (error) {
       tx.abort();
@@ -388,7 +408,8 @@ export async function laKhongGianMau(wsId) {
  * bỏ; workspace có tài liệu người dùng tự viết thì giữ và hợp nhất như thường. Workspace bị bỏ đã nằm trong bản sao
  * lưu chụp trước khi ghi đè (saoLuuTruocKhiGhiDe).
  */
-export async function restore(payload, { thayThe = false } = {}) {
+/** thayDoi (sau khi gộp, của gopPayload): chỉ ghi phần đã đổi (keHoachGhi); workspace không có mặt trong đó thì không ghi gì. */
+export async function restore(payload, { thayThe = false, thayDoi = null } = {}) {
   payload = await prepareRestore(payload);
   const tuDrive = payload.workspaces.map((w) => w.id);
   // Đọc TRƯỚC khi ghi: workspace chỉ có trên máy không bị restore đụng tới, nhưng đọc sớm cho chắc.
@@ -400,16 +421,19 @@ export async function restore(payload, { thayThe = false } = {}) {
   let xong = 0;
   for (const ws of payload.workspaces) {
     const name = dbName(ws.id);
+    const doiWs = thayDoi ? thayDoi[ws.id] : null;
+    if (thayDoi && !doiWs) { xong++; continue; } // gộp mà workspace này không đổi gì: không ghi
     try {
-      if (!(await dbExists(name))) {
+      const taoMoi = !(await dbExists(name));
+      if (taoMoi) {
         if (!ws.schema || !ws.schema.length) {
           throw new Error('bản sao lưu không kèm schema — không dựng lại được trên máy trắng');
         }
         const fresh = await createDb(name, ws.version || 3, ws.schema);
         fresh.close();
       }
-      await writeWorkspace(ws);
-      await boSungTaiLieuMau(ws.id); // tự bắt lỗi bên trong, không bao giờ ném ra đây
+      await writeWorkspace(ws, taoMoi ? null : doiWs);
+      if (!doiWs || taoMoi) await boSungTaiLieuMau(ws.id); // chỉ sau khi xoá sạch rồi ghi cả; tự bắt lỗi bên trong
       await migrateDatabase(name);
     } catch (e) {
       throw new Error(

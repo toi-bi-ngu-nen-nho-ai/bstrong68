@@ -35,16 +35,16 @@ function binsCua(stores, docId) {
 
 /**
  * Hợp theo khoá: bản của máy này thắng; máy này đánh dấu xoá mà bên kia còn thì lấy bên kia (không bao giờ mất ảnh).
- * Trả [bản ghi, số bản ghi lấy từ bên kia].
+ * Trả [bản ghi, các bản ghi lấy từ bên kia].
  */
 function hopTheoKhoa(cua, khac, khoa) {
   const ra = new Map((cua || []).map((r) => [r?.[khoa], r]));
-  let lay = 0;
+  const lay = [];
   for (const r of khac || []) {
     const k = r?.[khoa];
     if (k === undefined) continue;
     const cu = ra.get(k);
-    if (!cu || (cu.deletedAt && !r.deletedAt)) { ra.set(k, r); lay++; }
+    if (!cu || (cu.deletedAt && !r.deletedAt)) { ra.set(k, r); lay.push(r); }
   }
   return [[...ra.values()], lay];
 }
@@ -79,18 +79,20 @@ function gopWorkspace(ws, khac, now) {
     moi.push({ docId, bin: encode(bin), createdAt: cu.get(docId)?.createdAt ?? cuKhac.get(docId)?.createdAt ?? encode(now), updatedAt: encode(now) });
   }
   if (doi.size) s.snapshots = s.snapshots.filter((r) => !doi.has(r.docId)).concat(moi);
+  // Update của máy này đã nằm trong snapshot mới: restore xoá đúng chúng (theo khoá), update ghi vào máy sau lúc xuất thì còn.
+  const boCapNhat = (s.updates || []).filter((r) => doi.has(r.docId)).map((r) => ({ docId: r.docId, createdAt: r.createdAt }));
   if (s.updates) s.updates = s.updates.filter((r) => !doi.has(r.docId));
   if (s.clocks) s.clocks = s.clocks.filter((r) => !doi.has(r.docId)).concat([...doi].map((docId) => ({ docId, timestamp: encode(now) })));
-  let anh = 0;
+  const anh = {};
   for (const ten of ['blobs', 'blobData']) {
     // Tự gộp đợt 2: bản lưu mới không mang blobData (ảnh là tệp riêng trên Drive). Bản cũ của máy kia còn mang thì lấy ảnh
     // của nó dù bản xuất của máy này không có kho đó: restore chỉ thêm ảnh, không xoá ảnh đang có.
     if (!s[ten] && !k[ten]) continue;
     const [ra, lay] = hopTheoKhoa(s[ten], k[ten], 'key');
     s[ten] = ra;
-    anh += lay;
+    if (lay.length) anh[ten] = lay;
   }
-  return { doi, anh };
+  return { doi, anh, boCapNhat };
 }
 
 const dungDinhDang = (p) => p?.format === 'bstr-drive-sync/1' && Array.isArray(p.workspaces)
@@ -107,12 +109,13 @@ export function gopPayload(mayNay, cacBan, now = new Date()) {
   if (!dungDinhDang(mayNay) || !Array.isArray(cacBan) || !cacBan.every(dungDinhDang)) throw loiGop('Bản lưu không đúng định dạng');
   const ra = structuredClone(mayNay);
   const theoId = new Map(ra.workspaces.map((ws) => [ws.id, ws]));
-  const daDoi = new Set();
+  const daDoi = new Set(), wsTao = new Set(), thayDoi = {};
   let wsMoi = 0, anhGop = 0;
   for (const ban of cacBan) {
     for (const wsKhac of ban.workspaces) {
       let ws = theoId.get(wsKhac.id);
       if (!ws) {
+        wsTao.add(wsKhac.id);
         // Workspace chỉ bên kia: dựng tài liệu lại như tài liệu thêm mới (một snapshot, giờ máy này). Chép nguyên mốc giờ
         // của máy kia thì máy kia chạy nhanh giờ làm kho lưu trữ từ chối snapshot mới hơn của máy này và bỏ luôn updates.
         ws = structuredClone(wsKhac);
@@ -121,9 +124,15 @@ export function gopPayload(mayNay, cacBan, now = new Date()) {
         theoId.set(ws.id, ws);
         wsMoi++;
       }
-      const { doi, anh } = gopWorkspace(ws, wsKhac, now);
+      const { doi, anh, boCapNhat } = gopWorkspace(ws, wsKhac, now);
       for (const docId of doi) daDoi.add(`${ws.id}\n${docId}`);
-      anhGop += anh;
+      anhGop += Object.values(anh).reduce((n, ds) => n + ds.length, 0);
+      if (wsTao.has(ws.id) || doi.size || Object.keys(anh).length) {
+        const t = (thayDoi[ws.id] ??= { moi: wsTao.has(ws.id), taiLieu: [], boCapNhat: [], anh: {} });
+        for (const docId of doi) if (!t.taiLieu.includes(docId)) t.taiLieu.push(docId);
+        t.boCapNhat.push(...boCapNhat);
+        for (const [ten, ds] of Object.entries(anh)) (t.anh[ten] ??= []).push(...ds);
+      }
     }
   }
   for (const ban of [mayNay, ...cacBan]) {
@@ -133,5 +142,5 @@ export function gopPayload(mayNay, cacBan, now = new Date()) {
     }
   }
   ra.savedAt = now.toISOString();
-  return { payload: ra, thongKe: { taiLieuGop: daDoi.size, wsMoi, anhGop } };
+  return { payload: ra, thongKe: { taiLieuGop: daDoi.size, wsMoi, anhGop }, thayDoi };
 }

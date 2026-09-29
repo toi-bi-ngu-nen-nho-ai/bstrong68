@@ -355,10 +355,11 @@ async function gopNgay() {
       if (thayThe) moi = await boKhongGianMau(moi);
       ketQua = gopPayload(moi, cacBan);
     }
-    const { payload, thongKe } = ketQua;
+    const { payload, thongKe, thayDoi } = ketQua;
     daGhi = true;
     kenh?.postMessage('da-ghi'); // tab đang chờ: dữ liệu trên máy sắp đổi, khoá nhả thì tải lại
-    const { bo } = await restore(payload, { thayThe });
+    // Chỉ ghi phần đã đổi (thayDoi), không xoá sạch kho: kho của app có thể đang gộp update của tài liệu không đổi.
+    const { bo } = await restore(payload, { thayThe, thayDoi });
     // Không tải bản đã gộp lên ở đây (tự gộp đợt 2): phải đẩy ảnh trước (lần đầu có thể lâu) mà màn chặn nhập đang mở.
     // Trang tải lại, lượt lưu tiền cảnh của start() đẩy ảnh rồi lưu bản này (vân tay còn là của lần trước nên chắc chắn
     // lưu) và dọn bản cũ.
