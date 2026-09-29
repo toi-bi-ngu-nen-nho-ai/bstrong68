@@ -9,15 +9,19 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   await self.clients.claim();
 })()));
 
-const tot = (res) => res.ok && res.type === 'basic';
+// Phản hồi đáng cất: cùng nguồn, thành công, không qua chuyển hướng (trình duyệt không nhận bản chuyển hướng khi mở trang).
+// Tệp mà máy chủ trả HTML là tệp không có (máy chủ trả index.html cho đường dẫn lạ): trả cho trang nhưng không cất; chỉ
+// trang của app (laTrang) mới là HTML.
+const tot = (res, laTrang = false) =>
+  res.ok && res.type === 'basic' && !res.redirected && (laTrang || !/^text\/html/i.test(res.headers.get('content-type') || ''));
 // Mất mạng mà chưa cất đúng URL này: dùng bản cất sẵn cùng đường dẫn (khác cờ), ví dụ tệp tải trước khi service worker kịp
 // điều khiển trang, hay tệp worker nạp với cờ riêng. Có mạng thì không bao giờ đi đường này.
 const duPhong = async (kho, req, loi) => (await kho.match(req, { ignoreSearch: true, ignoreVary: true })) || Promise.reject(loi);
 
 async function trang(e) {
   const kho = await caches.open(KHO_UNG_DUNG);
-  const mang = fetch(e.request).then(async (res) => {
-    if (tot(res)) await kho.put('/', res.clone());
+  const mang = fetch(e.request).then((res) => {
+    if (tot(res, true)) e.waitUntil(kho.put('/', res.clone()).catch(() => {}));
     return res;
   });
   e.waitUntil(mang.catch(() => {}));
@@ -35,7 +39,7 @@ async function coDinh(e) {
   if (cat) return cat;
   try {
     const res = await fetch(e.request);
-    if (tot(res)) e.waitUntil(kho.put(e.request, res.clone()));
+    if (tot(res)) e.waitUntil(kho.put(e.request, res.clone()).catch(() => {}));
     return res;
   } catch (loi) {
     return duPhong(kho, e.request, loi);
@@ -45,8 +49,8 @@ async function coDinh(e) {
 async function lamMoiNen(e) {
   const kho = await caches.open(KHO_UNG_DUNG);
   const cat = await kho.match(e.request);
-  const mang = fetch(e.request).then(async (res) => {
-    if (tot(res)) await kho.put(e.request, res.clone());
+  const mang = fetch(e.request).then((res) => {
+    if (tot(res)) e.waitUntil(kho.put(e.request, res.clone()).catch(() => {}));
     return res;
   });
   if (cat) {
@@ -63,9 +67,9 @@ async function lamMoiNen(e) {
 self.addEventListener('fetch', (e) => {
   const r = e.request;
   const loai = phanLoai({ method: r.method, url: r.url, mode: r.mode, range: r.headers.has('range') }, self.location.origin);
-  if (loai === 'trang') e.respondWith(trang(e));
-  else if (loai === 'co-dinh') e.respondWith(coDinh(e));
-  else if (loai === 'lam-moi-nen') e.respondWith(lamMoiNen(e));
+  const phucVu = { trang, 'co-dinh': coDinh, 'lam-moi-nen': lamMoiNen }[loai];
+  // Bộ nhớ đệm lỗi (đầy, hỏng): đi mạng như không có service worker.
+  if (phucVu) e.respondWith(phucVu(e).catch(() => fetch(r)));
 });
 
 async function sha256Hex(buf) {
@@ -95,7 +99,7 @@ async function catSan(dung) {
       try {
         const r = await fetch(u);
         const bam = bamTrongUrl(u);
-        if (!tot(r) || (bam && (await sha256Hex(await r.clone().arrayBuffer())).slice(0, 16) !== bam)) throw new Error(`tệp không dùng được (${r.status})`);
+        if (!tot(r, new URL(u).pathname === '/') || (bam && (await sha256Hex(await r.clone().arrayBuffer())).slice(0, 16) !== bam)) throw new Error(`tệp không dùng được (${r.status})`);
         await kho.put(u, r);
       } catch (loi) {
         if (trongDs.has(u)) thieu++;
