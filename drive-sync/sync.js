@@ -677,7 +677,10 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
     const state = readState();
     const tuGop = banCanGop(files, state, deviceId()).length && !(giuaPhien && state?.fileId);
     const gop = tuGop ? await gopVoiDrive() : 'khong-doi';
-    if (gop === 'xong') return true;
+    // Gộp xong thì trang đang tải lại (gopNgay đã gọi location.reload/replace): không trả về. Trả true thì người gọi (luồng nhận
+    // ?nhan=, nút chia sẻ) tưởng đã đăng nhập xong, chạy tiếp rồi bị tải lại cắt ngang giữa chừng (thử thật 30/09: máy chưa đồng
+    // bộ lần nào đăng nhập từ hộp nhận tài liệu thì tài liệu không được nhận, không lời báo).
+    if (gop === 'xong') return new Promise(() => {});
     // Không chờ: ảnh về dần sau khi chữ đã đọc và gõ được, không chờ lượt lưu dưới đây (có khi cả chục lệnh Drive nối
     // tiếp). Thông báo của nó là thông báo ngắn và ô cảnh báo riêng, clearStatus của lượt lưu không xoá.
     taiAnhNen();
