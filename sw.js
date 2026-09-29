@@ -34,12 +34,22 @@ async function trang(e) {
   ]);
 }
 
+// Nội dung đúng mã kiểm trong URL (?…&bstr-nt=<16 hex đầu SHA-256>, make-deploy gắn); URL không mang mã thì coi là đúng.
+const dungMa = async (res, bam) => !bam || (await sha256Hex(await res.clone().arrayBuffer())).slice(0, 16) === bam;
+
 async function coDinh(e) {
   const kho = await caches.open(KHO_UNG_DUNG);
   const cat = await kho.match(e.request);
   if (cat) return cat;
   try {
-    const res = await fetch(e.request);
+    const bam = bamTrongUrl(e.request.url);
+    let res = await fetch(e.request);
+    // Vài giây đầu sau khi đưa lên, máy chủ có thể trả bản cũ dưới URL mới: sai mã thì tải lại một lần bỏ bộ nhớ HTTP; vẫn sai
+    // thì trả cho trang mà không cất (không ghim bản cũ dưới URL mới; lần mở sau tải lại).
+    if (tot(res) && !(await dungMa(res, bam))) {
+      res = await fetch(e.request, { cache: 'reload' });
+      if (!(await dungMa(res, bam))) return res;
+    }
     if (tot(res)) e.waitUntil(kho.put(e.request, res.clone()).catch(() => {}));
     return res;
   } catch (loi) {
@@ -100,8 +110,7 @@ async function catSan(dung) {
       const u = can[i++];
       try {
         const r = await fetch(u);
-        const bam = bamTrongUrl(u);
-        if (!tot(r, new URL(u).pathname === '/') || (bam && (await sha256Hex(await r.clone().arrayBuffer())).slice(0, 16) !== bam)) throw new Error(`tệp không dùng được (${r.status})`);
+        if (!tot(r, new URL(u).pathname === '/') || !(await dungMa(r, bamTrongUrl(u)))) throw new Error(`tệp không dùng được (${r.status})`);
         await kho.put(u, r);
       } catch (loi) {
         if (trongDs.has(u)) thieu++;
