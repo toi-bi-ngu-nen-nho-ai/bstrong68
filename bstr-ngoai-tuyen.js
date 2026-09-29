@@ -1,5 +1,6 @@
 // Mở app không cần mạng: đăng ký service worker /sw.js sau khi trang tải xong (không làm chậm lần mở), 20 giây sau nhờ nó
-// cất sẵn mọi tệp của app kèm các tệp lần mở này đã dùng. Lỗi gì cũng chỉ ghi console: app chạy như không có service worker.
+// cất sẵn mọi tệp của app kèm các tệp lần mở này đã dùng. Lỗi chỉ ghi console (hỏi bản mới hỏng thì im lặng): app chạy như
+// không có service worker.
 export function batNgoaiTuyen({ nav = globalThis.navigator, win = globalThis.window, perf = globalThis.performance, choMs = 20000 } = {}) {
   const sw = nav?.serviceWorker;
   if (!sw) return;

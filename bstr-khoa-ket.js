@@ -8,6 +8,7 @@ export const TEN_KHOA_TRANG = 'bstr-trang-song';
 export const TIEN_TO_CSDL = 'local:workspace:';
 export const CHO_TRANG_KHAC_MS = 1500;
 export const NHIP_MS = 100;
+const HAN_KHOA_MS = 30000; // kho của app bỏ qua bản ghi khoá cũ hơn chừng này
 
 const doi = (ms) => new Promise((r) => setTimeout(r, ms));
 const yeuCau = (r) => new Promise((ok, loi) => { r.onsuccess = () => ok(r.result); r.onerror = () => loi(r.error); });
@@ -24,10 +25,13 @@ export function khoIndexedDB({ idb = globalThis.indexedDB, tienTo = TIEN_TO_CSDL
     async cacCsdl() {
       return (await idb.databases()).map((d) => d.name).filter((n) => typeof n === 'string' && n.startsWith(tienTo));
     },
+    /** Số bản ghi khoá còn hiệu lực (kể cả giờ tương lai khi đồng hồ máy bị lùi): bản ghi cũ hơn không chặn kho, khỏi chờ vì nó. */
     async demKhoa(ten) {
       const db = await mo(ten);
       try {
-        return db.objectStoreNames.contains('locks') ? await yeuCau(db.transaction('locks').objectStore('locks').count()) : 0;
+        if (!db.objectStoreNames.contains('locks')) return 0;
+        const moc = Date.now() - HAN_KHOA_MS;
+        return (await yeuCau(db.transaction('locks').objectStore('locks').getAll())).filter((b) => +b?.lock > moc).length;
       } finally { db.close(); }
     },
     async xoaKhoa(ten) {

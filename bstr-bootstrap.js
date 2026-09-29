@@ -5,7 +5,7 @@ try {
   globalThis.bstrMigrationReport = await migrateLocalData();
   // Khoá kho kẹt (Phần A2): dọn TRƯỚC khi nạp app, không thì worker kho chờ tới 30 giây rồi tài liệu mới hiện. Không chặn quá 2 giây;
   // hết giờ thì bật tín hiệu huỷ để việc dọn dừng hẳn (app và kho sắp chạy, không được xoá thêm bản ghi khoá nào nữa).
-  await import('./bstr-khoa-ket.js?bstr-kk=1').then((m) => {
+  await import('./bstr-khoa-ket.js?bstr-kk=2').then((m) => {
     const huy = new AbortController();
     const gio = new Promise((r) => setTimeout(() => { huy.abort(); r(); }, 2000));
     return Promise.race([m.giaiPhongKhoaKet({ signal: huy.signal }), gio]);
@@ -26,7 +26,7 @@ try {
       }]);
     }
   }
-  import('./bstr-ngoai-tuyen.js?bstr-sw=2').then((m) => m.batNgoaiTuyen()).catch((e) => console.warn('[bstr] chưa bật được mở không cần mạng', e));
+  import('./bstr-ngoai-tuyen.js?bstr-sw=3').then((m) => m.batNgoaiTuyen()).catch((e) => console.warn('[bstr] chưa bật được mở không cần mạng', e));
   await import('./drive-sync/index.js?bstr-login=7');
 } catch (error) {
   console.error('[bstr] Không thể khởi động an toàn',error);
