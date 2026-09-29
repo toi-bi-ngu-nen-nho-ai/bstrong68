@@ -32,7 +32,7 @@ export function moTaLanLuu(now = new Date()) {
 /** Băng rôn khi mở app lúc mất mạng: đang xem bản trên máy, kèm lần lưu Drive gần nhất. */
 export function cauKhongMang(now = new Date()) {
   const lan = moTaLanLuu(now).replace(/^Đã lưu/, 'lưu').replace(/^Chưa/, 'chưa');
-  return `Không có mạng: đang xem bản trên máy (${lan}). Có mạng lại sẽ tự lưu và gộp.`;
+  return `Không có mạng: đang xem bản trên máy (${lan}). Có mạng lại sẽ tự lưu lên Drive.`;
 }
 
 /** Tên thiết bị hiện cho người dùng, tự đặt từ trình duyệt: "Chrome · Windows", "Safari · iPhone". */
@@ -623,13 +623,14 @@ function baoKhongMang() {
     clearInterval(choCoMang.hen);
     globalThis.removeEventListener?.('online', chay);
     choCoMang = null;
-    start();
+    start({ giuaPhien: true });
   };
   choCoMang = { hen: setInterval(chay, 60000) };
   globalThis.addEventListener?.('online', chay);
 }
 
-export async function start({ onSkip } = {}) {
+/** giuaPhien: chạy lại khi có mạng lại (baoKhongMang), người dùng có thể đang đọc hay gõ. */
+export async function start({ onSkip, giuaPhien = false } = {}) {
   // Chưa có Client ID thì đồng bộ KHÔNG THỂ chạy: mọi lần đăng nhập đều hỏng.
   // Nằm im tuyệt đối — không modal, không trạng thái, không hẹn giờ, không
   // lắng nghe sự kiện — để ứng dụng chạy y như trước khi có nhánh này.
@@ -669,8 +670,12 @@ export async function start({ onSkip } = {}) {
 
     const token = await ensureToken();
     const files = await listVersions(token, await folder());
-    // Tự gộp: thành công thì trang tải lại. Lỗi thì giữ lời báo, lượt lưu nền 2 phút sau sẽ lưu phần máy này.
-    const gop = banCanGop(files, readState(), deviceId()).length ? await gopVoiDrive() : 'khong-doi';
+    // Tự gộp: thành công thì trang tải lại. Lỗi thì giữ lời báo, lượt lưu nền 2 phút sau sẽ lưu phần máy này. Có mạng lại giữa
+    // phiên thì máy đã đồng bộ không tự gộp (không chặn màn hình, không tải lại trang khi đang đọc/gõ; chủ dự án chọn 29/09):
+    // lượt lưu dưới đây báo băng rôn "Tải lại để gộp". Máy chưa đồng bộ lần nào vẫn gộp: lưu trước thì không gian mẫu lên Drive.
+    const state = readState();
+    const tuGop = banCanGop(files, state, deviceId()).length && !(giuaPhien && state?.fileId);
+    const gop = tuGop ? await gopVoiDrive() : 'khong-doi';
     if (gop === 'xong') return true;
     // Không chờ: ảnh về dần sau khi chữ đã đọc và gõ được, không chờ lượt lưu dưới đây (có khi cả chục lệnh Drive nối
     // tiếp). Thông báo của nó là thông báo ngắn và ô cảnh báo riêng, clearStatus của lượt lưu không xoá.
