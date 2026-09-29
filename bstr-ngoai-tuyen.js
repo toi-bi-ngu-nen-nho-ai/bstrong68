@@ -6,7 +6,11 @@ export function batNgoaiTuyen({ nav = globalThis.navigator, win = globalThis.win
   // Mặc định trình duyệt chỉ ghi 250 tệp tải đầu tiên; lần mở app đã khoảng 100.
   try { perf.setResourceTimingBufferSize(1000); } catch {}
   const dangKy = () => {
-    sw.register('/sw.js', { updateViaCache: 'none' }).catch((e) => console.warn('[bstr] chưa đăng ký được service worker', e));
+    // register() cùng tệp không kiểm bản mới: hỏi bản mới của sw.js mỗi lần mở trang, để bản mới (kể cả công tắc tắt khẩn) tới máy ở
+    // lần mở kế tiếp thay vì chờ tới 24 giờ. Mất mạng hay máy chủ lỗi thì update() báo lỗi: bản đang cất vẫn chạy, im lặng.
+    sw.register('/sw.js', { updateViaCache: 'none' })
+      .then((reg) => reg?.update?.().catch(() => {}))
+      .catch((e) => console.warn('[bstr] chưa đăng ký được service worker', e));
     win.setTimeout(async () => {
       try {
         if (nav.onLine === false) return; // lần mở sau cất
