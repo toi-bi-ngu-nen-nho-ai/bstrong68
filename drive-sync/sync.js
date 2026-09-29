@@ -29,6 +29,12 @@ export function moTaLanLuu(now = new Date()) {
   return d.toDateString() === now.toDateString() ? `Đã lưu Drive lúc ${gio}` : `Đã lưu Drive lúc ${gio} ${d.toLocaleDateString('vi-VN')}`;
 }
 
+/** Băng rôn khi mở app lúc mất mạng: đang xem bản trên máy, kèm lần lưu Drive gần nhất. */
+export function cauKhongMang(now = new Date()) {
+  const lan = moTaLanLuu(now).replace(/^Đã lưu/, 'lưu').replace(/^Chưa/, 'chưa');
+  return `Không có mạng: đang xem bản trên máy (${lan}). Có mạng lại sẽ tự lưu và gộp.`;
+}
+
 /** Tên thiết bị hiện cho người dùng, tự đặt từ trình duyệt: "Chrome · Windows", "Safari · iPhone". */
 export function tenThietBi(ua = globalThis.navigator?.userAgent || '') {
   const trinhDuyet = [[/Edg\//, 'Edge'], [/coc_coc_browser/, 'Cốc Cốc'], [/OPR\//, 'Opera'], [/Firefox\//, 'Firefox'],
@@ -600,6 +606,29 @@ export async function dongGoiTaiLieuMau(ids) {
   return { anhXa, giuLai };
 }
 
+/** Lỗi mạng của fetch (Chrome "Failed to fetch", Safari "Load failed", Firefox "NetworkError…"), không phải lỗi mã. */
+const laLoiMang = (e) => e?.name === 'TypeError' && /Failed to fetch|Load failed|NetworkError/i.test(e?.message || '');
+
+let choCoMang = null; // đang chờ có mạng lại để chạy lại start()
+
+/**
+ * Mở app lúc mất mạng: báo đang xem bản trên máy; có mạng lại (sự kiện online, hoặc lần kiểm 60 giây một lần) thì chạy lại
+ * start() đúng một lần: gộp nếu cần, cài lượt lưu nền, tải nền ảnh. Trước đây mở app lúc mất mạng thì cả buổi không tự lưu.
+ */
+function baoKhongMang() {
+  setStatus(cauKhongMang(), { persist: true, level: 'warn' });
+  if (choCoMang) return;
+  const chay = () => {
+    if (globalThis.navigator?.onLine === false) return;
+    clearInterval(choCoMang.hen);
+    globalThis.removeEventListener?.('online', chay);
+    choCoMang = null;
+    start();
+  };
+  choCoMang = { hen: setInterval(chay, 60000) };
+  globalThis.addEventListener?.('online', chay);
+}
+
 export async function start({ onSkip } = {}) {
   // Chưa có Client ID thì đồng bộ KHÔNG THỂ chạy: mọi lần đăng nhập đều hỏng.
   // Nằm im tuyệt đối — không modal, không trạng thái, không hẹn giờ, không
@@ -628,11 +657,15 @@ export async function start({ onSkip } = {}) {
       }
       await signIn();
     } else {
+      // Mất mạng: mở bằng bản trên máy, không chờ Drive; có mạng lại thì tự chạy lại (baoKhongMang).
+      if (globalThis.navigator?.onLine === false) { baoKhongMang(); return; }
       await ensureToken();
     }
     // Đã đăng nhập: băng rôn "Chưa đồng bộ… Đăng nhập" hay lỗi đăng nhập trước đó không còn đúng. Trước đây chỉ lượt
     // lưu thành công mới xoá, nên chọn "Để sau" ở hộp xung đột thì băng rôn cũ ở lại (thử 25/09 trên bstrong68.com).
     clearStatus();
+    // Xin trình duyệt giữ dữ liệu trang lâu dài (không tự xoá khi máy thiếu chỗ); không được thì thôi.
+    Promise.resolve(globalThis.navigator?.storage?.persist?.()).catch(() => {});
 
     const token = await ensureToken();
     const files = await listVersions(token, await folder());
@@ -659,6 +692,11 @@ export async function start({ onSkip } = {}) {
     });
     return true;
   } catch (e) {
+    if (laLoiMang(e) && isSignedIn()) {
+      console.warn('[drive-sync] mất mạng lúc khởi động, chờ có mạng lại', e);
+      baoKhongMang();
+      return;
+    }
     console.error('[drive-sync] khởi động lỗi', e);
     if (e?.loai === 'popup_failed_to_open') {
       // Bấm nút trên băng rôn là thao tác của người dùng, trình duyệt thường cho mở cửa sổ.
