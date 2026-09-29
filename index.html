@@ -274,18 +274,22 @@
     }
   } catch (e) {}
   // Share popover's "Sao chép liên kết" button: the default click handler
-  // would just copy a dead local URL (no server here to host a public share
-  // page). Intercept ahead of both React's delegated listener AND Radix's
-  // own outside-pointerdown close — the popover's dismissable layer closes
-  // (unmounting this button) on 'pointerdown', before 'click' ever fires, so
-  // listening for 'click' here let real mouse clicks fall through silently.
-  document.addEventListener('pointerdown', function (event) {
+  // copies a dead local URL (/workspace/…, no server here to host a public
+  // share page) and toasts "Đã sao chép" at once. Start Drive sharing on
+  // 'pointerdown' (the popover may close before 'click'), and ALSO swallow
+  // the 'click': it still reaches the button after pointerdown (tested
+  // 30/09), and the default handler's dead URL got pasted instead of the
+  // ?nhan= link that lands seconds later. Keyboard activation has no
+  // pointerdown (click detail 0): start sharing from the click then.
+  function chanNutChepLienKet(event) {
     var btn = event.target.closest && event.target.closest('._1gasstp2');
     if (!btn) return;
     event.preventDefault();
     event.stopPropagation();
-    window.bstrDriveSync?.chiaSeTaiLieuHienTai?.();
-  }, true);
+    if (event.type === 'pointerdown' || event.detail === 0) window.bstrDriveSync?.chiaSeTaiLieuHienTai?.();
+  }
+  document.addEventListener('pointerdown', chanNutChepLienKet, true);
+  document.addEventListener('click', chanNutChepLienKet, true);
 })();
 </script>
 <script src="/js/gsap.min.js"></script>
