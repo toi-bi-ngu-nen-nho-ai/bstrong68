@@ -179,7 +179,8 @@ export function showNhan() {
   return openDialog(`
       <h2 class="bstr-gs-title">Nhận tài liệu được chia sẻ</h2>
       <p class="bstr-gs-desc">Có người gửi cho bạn một tài liệu. Tài liệu được thêm vào máy này với tiêu đề
-        bắt đầu bằng "[Nhận]"; tài liệu của bạn không bị thay đổi.</p>
+        bắt đầu bằng "[Nhận]"; tài liệu của bạn không bị thay đổi. Đã nhận tài liệu này trước đó thì bản mới
+        được gộp vào bản trên máy, giữ phần bạn đã sửa.</p>
       <p class="bstr-gs-desc">Trước khi thêm, app sao lưu dữ liệu trên máy lên Google Drive của bạn, nên cần
         đăng nhập Google.</p>
       <button class="bstr-gs-btn bstr-gs-primary" data-act="nhan">Nhận tài liệu</button>

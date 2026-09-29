@@ -577,10 +577,10 @@ export async function wsNhan(docId = null) {
   return hopLe[0] || null;
 }
 
-/** Bytes của tài liệu gốc (root) của một workspace — snapshot + updates. */
-export async function rootBins(wsId) {
+/** Bytes của một tài liệu trong workspace (mặc định tài liệu gốc) — snapshot + updates. */
+export async function binsTaiLieu(wsId, docId = wsId) {
   const db = await req(indexedDB.open(dbName(wsId)));
-  try { return await binsCuaDoc(db, wsId); } finally { db.close(); }
+  try { return await binsCuaDoc(db, docId); } finally { db.close(); }
 }
 
 /**
@@ -622,12 +622,13 @@ export async function nguonChiaSe(docId) {
  * Ghi tài liệu nhận được vào IndexedDB trong MỘT giao dịch: snapshot tài liệu,
  * snapshot tài liệu gốc đã sửa, các blob kèm theo.
  *
- * `updates` của riêng tài liệu nhận bị xoá: bản của người gửi phải thắng, nếu
- * để lại thì lần mở sau Yjs gộp bản sửa cũ của máy này đè lên nội dung vừa
- * nhận. `updates` của tài liệu GỐC thì giữ nguyên — rootBin đã gộp sẵn chúng
+ * Tài liệu mới: ghi snapshot, `updates` sót lại của id này bị xoá.
+ * Nhận lại bản đã nhận (`gop`): snapshotBin là bản trên máy đã gộp bản người gửi. Ghi nó thành MỘT update mới, không
+ * đụng snapshot hay update đang có: phần gõ thêm trên máy giữa lúc đọc và lúc ghi vẫn còn, lần mở sau app gộp tất cả.
+ * `updates` của tài liệu GỐC thì giữ nguyên — rootBin đã gộp sẵn chúng
  * rồi, và gộp lại một update đã biết là vô hại trong Yjs.
  */
-export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs = [], blobData = [] }) {
+export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = false, blobs = [], blobData = [] }) {
   const decodedBlobs=blobs.map(decode),decodedBlobData=blobData.map(decode);
   const db = await req(indexedDB.open(dbName(wsId)));
   try {
@@ -640,7 +641,9 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs 
     const cuTaiLieu = await req(snapOs0.get(docId));
     const cuRoot = await req(db.transaction('snapshots', 'readonly').objectStore('snapshots').get(wsId));
 
-    const cuUpdates = can.includes('updates')
+    // Kho không có `updates`: bản gộp (đã chứa snapshot trên máy) ghi đè snapshot như tài liệu mới.
+    const themUpdate = gop && can.includes('updates');
+    const cuUpdates = can.includes('updates') && !themUpdate
       ? await req(db.transaction('updates', 'readonly').objectStore('updates').index('docId').getAll(docId))
       : [];
 
@@ -648,10 +651,12 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs 
     const finished = txDone(tx);
     try {
     const snaps = tx.objectStore('snapshots');
-    snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
+    if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
     snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
     if (can.includes('updates')) {
       const ups = tx.objectStore('updates');
+      // add, không put: trùng khoá [docId, createdAt] với update của app thì huỷ cả giao dịch, không ghi đè update đó.
+      if (themUpdate) ups.add({ docId, bin: snapshotBin, createdAt: now });
       for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
     }
     if (can.includes('clocks')) {
@@ -669,7 +674,7 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, blobs 
     }
     } catch (error) { tx.abort(); await finished.catch(()=>{}); throw error; }
     await finished;
-    return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu };
+    return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu, gop: themUpdate };
   } finally {
     db.close();
   }

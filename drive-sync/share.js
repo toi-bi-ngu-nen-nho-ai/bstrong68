@@ -9,8 +9,8 @@ import { taiAnhThieu } from './anh.js';
 /**
  * Chia sẻ MỘT tài liệu kiểu AnkiWeb: A đưa gói lên Drive và lấy đường dẫn công
  * khai; B dán đường dẫn, gói được ghi thẳng vào IndexedDB của B. Dán lại đường
- * dẫn cũ thì CẬP NHẬT bản của B chứ không tạo bản thứ hai. B sửa bản của mình
- * thoải mái — không có đường quay ngược về A.
+ * dẫn cũ thì GỘP bản mới của A vào bản của B (giữ phần B đã sửa) chứ không tạo
+ * bản thứ hai. B sửa bản của mình thoải mái — không có đường quay ngược về A.
  *
  * Yjs nằm trong drive-sync/vendor/, được dùng chung với bước kiểm tra dữ liệu
  * khi khởi động, qua bản gộp một tệp yjs-gop.mjs (sinh từ yjs.mjs + lib0/).
@@ -70,8 +70,12 @@ function datTienToNhan(Y, snapshotBin, tieuDeGoi) {
       if (!b || typeof b.get !== 'function' || b.get('sys:flavour') !== 'bstr:page') continue;
       const t = b.get('prop:title');
       if (!t || typeof t.insert !== 'function') continue;
-      const hienTai = t.toString();
-      if (!hienTai.startsWith(TIEN_TO_NHAN)) t.insert(0, TIEN_TO_NHAN);
+      // Gộp với bản sao đã có tiền tố: chữ người gửi thêm ở đầu tiêu đề có thể đứng trước tiền tố (Yjs xếp chữ chèn cùng chỗ
+      // theo clientID). Bỏ mọi tiền tố không ở đầu rồi đặt đúng một cái ở đầu.
+      for (let i = t.toString().lastIndexOf(TIEN_TO_NHAN); i > 0; i = t.toString().lastIndexOf(TIEN_TO_NHAN)) {
+        t.delete(i, TIEN_TO_NHAN.length);
+      }
+      if (!t.toString().startsWith(TIEN_TO_NHAN)) t.insert(0, TIEN_TO_NHAN);
       tieuDe = t.toString();
       break;
     }
@@ -256,8 +260,9 @@ function kiemTraGoi(goi) {
 /**
  * Bước 1–2 của nhanGoi(), không đụng IndexedDB hay mạng: dựng bản gốc mới trong
  * bộ nhớ rồi đối chiếu. Sai một li là ném lỗi — người gọi không được ghi gì.
+ * `banCu`: bytes (snapshot + updates) của tài liệu goi.doc.id đang có trên máy.
  */
-export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu) {
+export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu, banCu = []) {
   const truoc = await kiemKeRoot(truocBin);
   if (!Array.isArray(truoc.ids)) {
     throw new Error('Tài liệu gốc trên máy không đọc được meta.pages — dừng, không ghi gì');
@@ -276,10 +281,15 @@ export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu) {
   const banSao = cu !== undefined && !String(layTieuDe(cu) ?? '').startsWith(TIEN_TO_NHAN);
   const docId = banSao ? taoId() : goi.doc.id;
 
+  // Nhận lại bản đã nhận (chủ dự án chọn 29/09): GỘP bản mới của người gửi vào bản trên máy — Yjs giữ phần sửa của cả hai
+  // bên, bên nào xoá thì xoá theo — thay vì để bản người gửi thay hẳn và mất phần máy này đã sửa.
+  const gop = !banSao && cu !== undefined && banCu.length > 0;
+  const guiDen = store.giaiMa(goi.doc.snapshot);
+
   const meta = locMeta(goi.doc.meta, docId);
   // Tiêu đề phải nói rõ đây là bản nhận về, để không ai nhầm với tài liệu của
   // chính mình. Nhận lại lần nữa thì KHÔNG được chồng thêm tiền tố.
-  const daSua = datTienToNhan(Y, store.giaiMa(goi.doc.snapshot), meta.title);
+  const daSua = datTienToNhan(Y, gop ? Y.mergeUpdates([...banCu, guiDen]) : guiDen, meta.title);
   meta.title = daSua.tieuDe.startsWith(TIEN_TO_NHAN) ? daSua.tieuDe : TIEN_TO_NHAN + daSua.tieuDe;
   meta.updatedDate = Date.now();
 
@@ -305,7 +315,7 @@ export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu) {
       + '— đã huỷ, không ghi gì lên máy'
     );
   }
-  return { docId, meta, snapshotBin: daSua.bin, rootBin, truoc, sau };
+  return { docId, meta, snapshotBin: daSua.bin, rootBin, truoc, sau, gop };
 }
 
 /**
@@ -321,9 +331,10 @@ export async function nhanGoi(goi, { taiLai = true } = {}) {
   const wsId = await store.wsNhan(goi.doc.id);
   if (!wsId) throw new Error('Máy này chưa có workspace nào để nhận tài liệu — hãy mở ứng dụng trước');
 
-  const rBins = await store.rootBins(wsId);
+  const rBins = await store.binsTaiLieu(wsId);
   if (!rBins.length) throw new Error(`Workspace ${wsId} không có tài liệu gốc — dừng, không ghi gì`);
-  const { docId, meta, snapshotBin, rootBin, truoc, sau } = await dungBanNhan(Y, gopBins(Y, rBins), goi);
+  const { docId, meta, snapshotBin, rootBin, truoc, sau, gop } = await dungBanNhan(
+    Y, gopBins(Y, rBins), goi, undefined, await store.binsTaiLieu(wsId, goi.doc.id));
 
   // BẮT BUỘC: sao lưu trước khi đụng vào tài liệu gốc. Hỏng thì dừng hẳn.
   try {
@@ -341,17 +352,18 @@ export async function nhanGoi(goi, { taiLai = true } = {}) {
     docId,
     snapshotBin,
     rootBin,
+    gop,
     blobs: goi.blobs || [],
     blobData: goi.blobData || [],
   });
   console.log(
-    `[drive-sync] đã ${kq.daCoSan ? 'CẬP NHẬT' : 'THÊM'} tài liệu "${meta.title}" (${docId}) `
+    `[drive-sync] đã ${kq.gop ? 'GỘP' : kq.daCoSan ? 'CẬP NHẬT' : 'THÊM'} tài liệu "${meta.title}" (${docId}) `
     + `vào workspace ${wsId}\n`
     + `meta.pages: ${truoc.ids.length} -> ${sau.ids.length} dòng; `
     + `ảnh kèm: ${(goi.blobs || []).length}; `
-    + `đã xoá ${kq.daXoaUpdates} bản sửa cũ của tài liệu này`
+    + (kq.gop ? 'giữ mọi bản sửa trên máy' : `đã xoá ${kq.daXoaUpdates} bản sửa cũ của tài liệu này`)
   );
-  setStatus(`Đã nhận tài liệu "${meta.title}"`);
+  setStatus(kq.gop ? `Đã gộp bản mới của "${meta.title}", giữ phần bạn đã sửa` : `Đã nhận tài liệu "${meta.title}"`);
   if (taiLai) {
     // Ứng dụng giữ trạng thái workspace trong bộ nhớ; ghi dưới chân nó là vô
     // hình cho tới khi tải lại trang.
