@@ -17,9 +17,8 @@ export function khoIndexedDB({ idb = globalThis.indexedDB, tienTo = TIEN_TO_CSDL
   const mo = (ten) => new Promise((ok, loi) => {
     const q = idb.open(ten);
     q.onupgradeneeded = () => q.transaction.abort();
-    q.onsuccess = () => ok(q.result);
+    q.onsuccess = () => { q.result.onversionchange = () => q.result.close(); ok(q.result); }; // không bao giờ chặn lần nâng cấp của chính app
     q.onerror = () => loi(q.error);
-    q.onblocked = () => loi(new Error('CSDL bị chặn'));
   });
   return {
     async cacCsdl() {
@@ -63,9 +62,11 @@ async function soTrangSong(locks) {
 
 /**
  * Gọi MỘT lần lúc khởi động, trước khi nạp app (bstr-bootstrap.js): sau khi app và kho chạy thì bản ghi khoá có thể là của chính
- * trang này. Trả { bo, lyDo }: bo = số bản ghi khoá đã xoá; lyDo: 'khong-ho-tro' | 'khong-co' | 'co-trang-khac' | 'xong' | 'loi'.
+ * trang này. Trả { bo, lyDo }: bo = số bản ghi khoá đã xoá; lyDo: 'khong-ho-tro' | 'khong-co' | 'co-trang-khac' | 'het-gio' | 'xong' | 'loi'.
+ * signal (AbortSignal, hay bất cứ thứ gì có `aborted` kiểu boolean): bootstrap bật khi hết giờ và đi tiếp khởi động app; từ lúc đó
+ * hàm không được chờ hay xoá thêm gì nữa (app và kho đã chạy thì bản ghi khoá có thể là khoá sống), trả lyDo 'het-gio'.
  */
-export async function giaiPhongKhoaKet({ kho = khoIndexedDB(), locks = globalThis.navigator?.locks, cho = doi, choTrangKhacMs = CHO_TRANG_KHAC_MS } = {}) {
+export async function giaiPhongKhoaKet({ kho = khoIndexedDB(), locks = globalThis.navigator?.locks, cho = doi, choTrangKhacMs = CHO_TRANG_KHAC_MS, signal } = {}) {
   try {
     if (!locks?.request || !locks?.query || !kho) return { bo: 0, lyDo: 'khong-ho-tro' };
     await giuKhoaTrang(locks);
@@ -75,12 +76,17 @@ export async function giaiPhongKhoaKet({ kho = khoIndexedDB(), locks = globalThi
     }
     if (!coKhoa.length) return { bo: 0, lyDo: 'khong-co' };
     // Trang khác còn sống có thể đang giữ khoá thật; trang vừa bị tải lại có thể chưa nhả khoá trang: chờ tối đa choTrangKhacMs.
-    for (let daCho = 0; (await soTrangSong(locks)) > 1; daCho += NHIP_MS) {
+    for (let daCho = 0; ; daCho += NHIP_MS) {
+      if (signal?.aborted) return { bo: 0, lyDo: 'het-gio' };
+      const n = await soTrangSong(locks);
+      if (n < 1) return { bo: 0, lyDo: 'loi' }; // khoá trang của chính mình phải thấy được; không thấy thì không dám kết luận
+      if (n === 1) break;
       if (daCho >= choTrangKhacMs) return { bo: 0, lyDo: 'co-trang-khac' };
       await cho(NHIP_MS);
     }
     let bo = 0;
     for (const ten of coKhoa) {
+      if (signal?.aborted) return { bo, lyDo: 'het-gio' };
       try { bo += await kho.xoaKhoa(ten); } catch (e) { console.warn('[bstr] chưa xoá được khoá kẹt của', ten, e); }
     }
     return { bo, lyDo: 'xong' };
