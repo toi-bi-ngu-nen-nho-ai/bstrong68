@@ -311,10 +311,13 @@ const LOI_THOI_CHO = 'BSTR_THOI_CHO';
 /**
  * Phần B (30/09; chủ dự án: có mạng thì chờ vài giây lấy bản mới nhất, nhưng có giới hạn). Sau CONFIG.choNutMs màn chặn nhập
  * hiện nút "Xem bản trên máy ngay"; bấm nút hay tới CONFIG.choToiDaMs thì:
- * - còn đang tải (trước khi ghi): thôi chờ; lời chờ bọc bằng cho() đang dở và mọi lời chờ sau ném lỗi LOI_THOI_CHO, không ghi gì;
+ * - còn đang tải (trước khi ghi): thôi chờ; lời chờ bọc bằng cho() đang dở ném lỗi LOI_THOI_CHO, không ghi gì. BẤT BIẾN: mọi await
+ *   trước hen.ghi() phải bọc bằng hen.cho() (lúc thôi chờ — hẹn giờ hay cú bấm, đều là macrotask — luôn có một lời chờ đã bọc đang
+ *   dở); ghi() là chốt cuối (đã thôi thì ném, không ghi);
  * - đang ghi (sau ghi()): không làm gì, nút ẩn (ghi dở nguy hiểm hơn chờ);
  * - đang tải trước ảnh tài liệu đang mở (anh()): bỏ phần ảnh, lời hứa anh() xong ngay (đã hết giờ lúc đang ghi: xong ngay khi vào).
- * coHan false (máy chưa đồng bộ lần nào: trên máy chỉ có không gian mẫu, xem ngay cũng không có gì để đọc): không nút, không hạn.
+ * coHan false (máy chưa đồng bộ lần nào): không nút, không hạn. Thôi chờ rồi lượt lưu nền sẽ đẩy cả "Không gian làm việc mẫu" (chỉ
+ * gopNgay mới bỏ nó) lên Drive, lẫn vào dữ liệu thật của các máy khác; nên chờ tới khi lấy xong.
  * Lệnh mạng đang chạy không bị huỷ (drive.js không nhận AbortSignal): kết quả về muộn bị bỏ qua.
  */
 function henCho(man, coHan) {
