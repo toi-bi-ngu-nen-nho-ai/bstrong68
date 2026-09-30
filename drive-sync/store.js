@@ -240,11 +240,37 @@ export function keHoachGhi(ws, thayDoi) {
   const s = ws.stores;
   if (!thayDoi || thayDoi.moi) return Object.fromEntries(Object.keys(s).map((ten) => [ten, { xoaHet: ten !== 'blobData', xoa: [], ghi: s[ten] }]));
   const doi = new Set(thayDoi.taiLieu);
+  // Tài liệu đổi mà máy đã có (themCapNhat): bản gộp THÊM thành một update (them, xem themUpdateSauCung), không ghi đè snapshot: giữa
+  // lúc xuất và lúc ghi, kho của app có thể vừa gộp chữ gõ ở thẻ khác vào snapshot; ghi đè bằng bản dựng từ bản xuất trước đó là mất
+  // chữ ấy (kiểm mở rộng 30/09 khuya). Kho không có bảng updates: ghi snapshot như cũ.
+  const them = new Set(s.updates ? thayDoi.themCapNhat || [] : []);
   const ke = {};
-  for (const ten of ['snapshots', 'clocks']) if (s[ten]) ke[ten] = { xoaHet: false, xoa: [], ghi: s[ten].filter((r) => doi.has(r.docId)) };
-  if (thayDoi.boCapNhat.length) ke.updates = { xoaHet: false, xoa: thayDoi.boCapNhat.map((u) => [u.docId, u.createdAt]), ghi: [] };
+  for (const ten of ['snapshots', 'clocks']) {
+    if (s[ten]) ke[ten] = { xoaHet: false, xoa: [], ghi: s[ten].filter((r) => doi.has(r.docId) && !(ten === 'snapshots' && them.has(r.docId))) };
+  }
+  if (thayDoi.boCapNhat.length || them.size) {
+    ke.updates = { xoaHet: false, xoa: thayDoi.boCapNhat.map((u) => [u.docId, u.createdAt]), ghi: [],
+      them: (s.snapshots || []).filter((r) => them.has(r.docId)).map((r) => ({ docId: r.docId, bin: r.bin })) };
+  }
   for (const [ten, ds] of Object.entries(thayDoi.anh)) ke[ten] = { xoaHet: false, xoa: [], ghi: ds };
   return ke;
+}
+
+/**
+ * Thêm bin thành MỘT update của docId trong giao dịch tx (có 'snapshots' và 'updates'). Giờ của update đặt SAU snapshot và mọi update
+ * đang có của tài liệu, đọc ngay trong giao dịch này (không ai ghi chen được). Kho của app gộp snapshot + update theo giờ: chỉ ghi
+ * snapshot mới khi update mới nhất mới hơn snapshot, rồi xoá mọi update đã đọc; update mang giờ cũ hơn snapshot (kho vừa gộp một update
+ * app ghi sau giờ ta lấy) bị xoá mà không vào đâu. Giờ luôn mới nhất nên cũng không trùng khoá [docId, createdAt] với update nào.
+ */
+function themUpdateSauCung(tx, docId, bin) {
+  const ups = tx.objectStore('updates');
+  const qs = tx.objectStore('snapshots').get(docId), qu = ups.index('docId').getAll(docId);
+  qu.onsuccess = () => { // yêu cầu trong một giao dịch xong theo thứ tự gửi: qs đã xong
+    let t = Date.now();
+    if (qs.result?.updatedAt) t = Math.max(t, +qs.result.updatedAt + 1);
+    for (const u of qu.result) t = Math.max(t, +u.createdAt + 1);
+    ups.add({ docId, bin, createdAt: new Date(t) });
+  };
 }
 
 async function writeWorkspace(ws, thayDoi) {
@@ -261,11 +287,12 @@ async function writeWorkspace(ws, thayDoi) {
     const tx = db.transaction(names, 'readwrite');
     const finished = txDone(tx);
     try {
-      for (const [storeName, { xoaHet, xoa, ghi }] of Object.entries(ke)) {
+      for (const [storeName, { xoaHet, xoa, ghi, them = [] }] of Object.entries(ke)) {
         const os = tx.objectStore(storeName);
         if (xoaHet) os.clear();
         for (const khoa of xoa) os.delete(decode(khoa));
         for (const rec of ghi) os.put(decode(rec));
+        for (const r of them) themUpdateSauCung(tx, r.docId, decode(r.bin));
       }
     } catch (error) {
       tx.abort();
@@ -636,7 +663,7 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = 
     const can = ['snapshots', 'updates', 'clocks', 'blobs', 'blobData']
       .filter((n) => db.objectStoreNames.contains(n));
     if (!can.includes('snapshots')) throw new Error(`Cơ sở dữ liệu ${dbName(wsId)} thiếu store snapshots`);
-    let now = new Date();
+    const now = new Date();
 
     const snapOs0 = db.transaction('snapshots', 'readonly').objectStore('snapshots');
     const cuTaiLieu = await req(snapOs0.get(docId));
@@ -648,43 +675,34 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = 
       ? await req(db.transaction('updates', 'readonly').objectStore('updates').index('docId').getAll(docId))
       : [];
 
-    for (let lan = 1; ; lan++) {
-      const tx = db.transaction(can, 'readwrite');
-      const finished = txDone(tx);
-      try {
-        const snaps = tx.objectStore('snapshots');
-        if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
-        if (can.includes('updates')) {
-          const ups = tx.objectStore('updates');
-          // add, không put: trùng khoá [docId, createdAt] với update của app thì huỷ cả giao dịch, không ghi đè update đó.
-          if (themUpdate) ups.add({ docId, bin: snapshotBin, createdAt: now });
-          for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
-          ups.add({ docId: wsId, bin: rootBin, createdAt: now });
-        } else snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
-        if (can.includes('clocks')) {
-          const cl = tx.objectStore('clocks');
-          cl.put({ docId, timestamp: now });
-          cl.put({ docId: wsId, timestamp: now });
-        }
-        if (can.includes('blobs')) {
-          const os = tx.objectStore('blobs');
-          for (const rec of decodedBlobs) os.put(rec);
-        }
-        if (can.includes('blobData')) {
-          const os = tx.objectStore('blobData');
-          for (const rec of decodedBlobData) os.put(rec);
-        }
-      } catch (error) { tx.abort(); await finished.catch(()=>{}); throw error; }
-      try {
-        await finished;
-        return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu, gop: themUpdate };
-      } catch (e) {
-        // Trùng khoá với update app ghi cùng mili giây: giao dịch đã huỷ, chưa ghi gì. Như kho của app, lùi 1 ms rồi ghi lại (tối
-        // đa 10 lần); trước đây bước nhận hỏng và báo nhầm "liên kết có thể đã hết hạn".
-        if (e?.name !== 'ConstraintError' || lan >= 10) throw e;
-        now = new Date(now.getTime() + 1);
+    const tx = db.transaction(can, 'readwrite');
+    const finished = txDone(tx);
+    try {
+      const snaps = tx.objectStore('snapshots');
+      if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
+      if (can.includes('updates')) {
+        const ups = tx.objectStore('updates');
+        for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
+        // Bản gộp (nhận lại) và bản gốc thêm thành update mang giờ sau mọi bản ghi đang có của nó (themUpdateSauCung).
+        if (themUpdate) themUpdateSauCung(tx, docId, snapshotBin);
+        themUpdateSauCung(tx, wsId, rootBin);
+      } else snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
+      if (can.includes('clocks')) {
+        const cl = tx.objectStore('clocks');
+        cl.put({ docId, timestamp: now });
+        cl.put({ docId: wsId, timestamp: now });
       }
-    }
+      if (can.includes('blobs')) {
+        const os = tx.objectStore('blobs');
+        for (const rec of decodedBlobs) os.put(rec);
+      }
+      if (can.includes('blobData')) {
+        const os = tx.objectStore('blobData');
+        for (const rec of decodedBlobData) os.put(rec);
+      }
+    } catch (error) { tx.abort(); await finished.catch(()=>{}); throw error; }
+    await finished;
+    return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu, gop: themUpdate };
   } finally {
     db.close();
   }
@@ -770,9 +788,11 @@ export async function anhThieu() {
       const co = new Set(blobData);
       const thieu = blobs.filter((b) => !b.deletedAt && !co.has(b.key)).map((b) => b.key);
       if (!thieu.length) continue;
-      const { snapshots: snaps } = await tatCa(db, { snapshots: 'getAll' });
-      const owners = blobOwners(snaps, thieu);
-      const luc = new Map(snaps.map((s) => [s.docId, +new Date(s.updatedAt || s.createdAt || 0)]));
+      // Cả updates: bản gộp của tài liệu đã có nằm trong một update (themUpdateSauCung), chưa vào snapshot tới khi app gộp.
+      const { snapshots: snaps, updates: ups } = await tatCa(db, { snapshots: 'getAll', updates: 'getAll' });
+      const owners = blobOwners([...snaps, ...ups], thieu);
+      const luc = new Map();
+      for (const r of [...snaps, ...ups]) luc.set(r.docId, Math.max(luc.get(r.docId) || 0, +new Date(r.updatedAt || r.createdAt || 0)));
       for (const key of thieu) {
         const docIds = [...owners.get(key)];
         ra.push({ wsId, key, docIds, moiNhat: docIds.length ? Math.max(...docIds.map((d) => luc.get(d) || 0)) : null });

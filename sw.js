@@ -17,19 +17,33 @@ const tot = (res, laTrang = false) =>
 // Mất mạng mà chưa cất đúng URL này: dùng bản cất sẵn cùng đường dẫn (khác cờ), ví dụ tệp tải trước khi service worker kịp
 // điều khiển trang, hay tệp worker nạp với cờ riêng. Có mạng thì không bao giờ đi đường này. Nhiều bản (lên bản mới, kho chưa
 // dọn bản cũ) thì lấy bản cất sau cùng.
-const duPhong = async (kho, req, loi) => (await kho.matchAll(req, { ignoreSearch: true, ignoreVary: true })).pop() || Promise.reject(loi);
+const duPhong = async (kho, req, loi) => (await hanKho(kho.matchAll(req, { ignoreSearch: true, ignoreVary: true }))).pop() || Promise.reject(loi);
+
+// Lệnh đọc bộ nhớ đệm treo (lỗi trình duyệt, đĩa bận: không trả lời, không báo lỗi) quá CHO_KHO_MS thì coi như bộ nhớ đệm hỏng: đi mạng
+// như không có service worker, không để app đứng trắng mãi. Lệnh đọc thường chỉ mất vài mili giây.
+const CHO_KHO_MS = 5000;
+function hanKho(p) {
+  let hen;
+  const het = new Promise((_, loi) => { hen = setTimeout(() => loi(new Error('bộ nhớ đệm không trả lời')), CHO_KHO_MS); });
+  return Promise.race([p, het]).finally(() => clearTimeout(hen));
+}
 
 async function trang(e) {
-  const kho = await caches.open(KHO_UNG_DUNG);
+  const khoP = caches.open(KHO_UNG_DUNG);
   const mang = fetch(e.request).then((res) => {
-    if (tot(res, true)) e.waitUntil(kho.put('/', res.clone()).catch(() => {}));
+    if (tot(res, true)) {
+      const ban = res.clone();
+      e.waitUntil(khoP.then((kho) => kho.put('/', ban)).catch(() => {}));
+    }
     return res;
   });
   e.waitUntil(mang.catch(() => {}));
-  const cat = await kho.match('/');
+  // Bộ nhớ đệm lỗi hay treo: dùng luôn lượt mạng đã gọi (không tải trang hai lần).
+  const cat = await hanKho(khoP.then((kho) => kho.match('/'))).catch(() => null);
   if (!cat) return mang;
+  // Máy chủ lỗi (5xx) hay chặn/giới hạn (4xx: Cloudflare 403, 429): bản đã cất. Chuyển hướng (status 0) đi qua.
   return Promise.race([
-    mang.then((res) => (res.status >= 500 ? cat : res), () => cat),
+    mang.then((res) => (res.status >= 400 ? cat : res), () => cat),
     new Promise((ok) => setTimeout(() => ok(cat), CHO_TRANG_MS)),
   ]);
 }
@@ -38,8 +52,8 @@ async function trang(e) {
 const dungMa = async (res, bam) => !bam || (await sha256Hex(await res.clone().arrayBuffer())).slice(0, 16) === bam;
 
 async function coDinh(e) {
-  const kho = await caches.open(KHO_UNG_DUNG);
-  const cat = await kho.match(e.request);
+  const kho = await hanKho(caches.open(KHO_UNG_DUNG));
+  const cat = await hanKho(kho.match(e.request));
   if (cat) return cat;
   try {
     const bam = bamTrongUrl(e.request.url);
@@ -58,8 +72,8 @@ async function coDinh(e) {
 }
 
 async function lamMoiNen(e) {
-  const kho = await caches.open(KHO_UNG_DUNG);
-  const cat = await kho.match(e.request);
+  const kho = await hanKho(caches.open(KHO_UNG_DUNG));
+  const cat = await hanKho(kho.match(e.request));
   const mang = fetch(e.request).then((res) => {
     if (tot(res)) e.waitUntil(kho.put(e.request, res.clone()).catch(() => {}));
     return res;

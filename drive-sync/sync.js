@@ -214,8 +214,9 @@ async function luu({ force, background, dsBan }) {
     // Tự gộp (28/09): Drive có bản mới hơn của máy khác thì VẪN lưu phần máy này (gộp về sau lấy đủ cả hai bên),
     // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
     const canGop = banCanGop(dsBan || await listVersions(token, await folder()), state, deviceId());
-    clearStatus();
-    baoCanGop(canGop); // tải lên có khi hàng chục giây (mạng yếu): trong lúc đó vẫn báo máy này đang xem bản chưa gộp
+    // Tải lên có khi hàng chục giây (mạng yếu): trong lúc đó vẫn báo máy này đang xem bản chưa gộp. Còn bản chưa gộp thì báo đè thẳng,
+    // không gỡ trước: gỡ rồi báo lại thì ui.js dựng lại nút, cú bấm rơi đúng lúc đó mất (lượt lưu nền chạy 2 phút một lần, mỗi lần đổi thẻ).
+    if (!baoCanGop(canGop)) clearStatus();
 
     // Chưa mã hoá: đủ lấy vân tay và đếm tài liệu. Phần lớn lượt lưu nền không đổi gì; mã hoá cả máy chỉ khi tải lên.
     const payload = await exportAll({ maHoa: false });
@@ -265,8 +266,11 @@ async function luu({ force, background, dsBan }) {
     await pruneVersions(token, files.filter((f) => !chuaGop.has(f.appProperties?.bstrThietBi || '')));
     // Lượt này không tạo bản sao lưu nào, nên dọn bản sao lưu cũ ở đây là an toàn.
     await pruneBackups(token, await listBackups(token, await folder()));
-    clearStatus(); // lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa
-    if (!baoCanGop(canGop) && !background) setStatus('Đã lưu lên Drive');
+    // Lưu được rồi thì cảnh báo "cần chú ý" không còn đúng nữa (còn bản chưa gộp thì báo đè thẳng, như trên).
+    if (!baoCanGop(canGop)) {
+      clearStatus();
+      if (!background) setStatus('Đã lưu lên Drive');
+    }
   } catch (e) {
     console.error('[drive-sync] lưu thất bại', e);
     if (!baoDriveDay(e)) {
@@ -688,8 +692,12 @@ export async function dongGoiTaiLieuMau(ids) {
   return { anhXa, giuLai };
 }
 
-/** Lỗi mạng của fetch (Chrome "Failed to fetch", Safari "Load failed", Firefox "NetworkError…"), không phải lỗi mã. */
-const laLoiMang = (e) => e?.name === 'TypeError' && /Failed to fetch|Load failed|NetworkError/i.test(e?.message || '');
+/**
+ * Lỗi mạng của fetch, không phải lỗi mã: Chrome "Failed to fetch" (đứt giữa lúc đọc: "network error"), Safari "Load failed" (iPhone
+ * cũ: "The network connection was lost.", "The Internet connection appears to be offline."), Firefox "NetworkError…".
+ */
+const laLoiMang = (e) => e?.name === 'TypeError'
+  && /Failed to fetch|Load failed|NetworkError|network error|network connection was lost|Internet connection appears to be offline/i.test(e?.message || '');
 
 let choCoMang = null; // đang chờ có mạng lại để chạy lại start()
 
@@ -705,6 +713,8 @@ function baoKhongMang() {
     clearInterval(choCoMang.hen);
     globalThis.removeEventListener?.('online', chay);
     choCoMang = null;
+    // Đã đăng xuất (ở thẻ khác) trong lúc chờ: start() sẽ bật hộp đăng nhập giữa lúc đang đọc. Báo như máy chưa đăng nhập.
+    if (!isSignedIn()) { baoChuaDongBo(); return; }
     start({ giuaPhien: true });
   };
   choCoMang = { hen: setInterval(chay, 60000) };

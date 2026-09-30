@@ -189,13 +189,18 @@ export function moManChan(text, { demGiay = false } = {}) {
   let viecNut = null; // khác null: nút đang hiện
   nut.addEventListener('click', () => viecNut?.());
   // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy (inert không
-  // chặn trình nghe ở window/document). Riêng Enter và phím cách trên nút đang hiện được đi qua, để bấm nút được bằng bàn phím; phím
-  // trong một hộp thoại khác mở trên màn (hộp đăng nhập) cũng đi qua: hộp đó tự giữ phím lại (stopPropagation), không lọt xuống.
+  // chặn trình nghe ở window/document). Riêng Enter và phím cách trên nút đang hiện vẫn bấm được nút bằng bàn phím; phím trong một
+  // hộp thoại khác mở trên màn (hộp đăng nhập) đi qua: hộp đó tự giữ phím lại (stopPropagation), không lọt xuống.
   const chan = (event) => {
-    if (viecNut && event.target === nut && (event.key === 'Enter' || event.key === ' ')) return;
     const khac = event.target?.closest?.('.bstr-gs-overlay');
     if (khac && khac !== overlay) return;
-    event.stopImmediatePropagation(); event.preventDefault();
+    event.stopImmediatePropagation();
+    // Enter/phím cách không kèm phím bổ trợ trên nút đang hiện: trình duyệt vẫn bấm nút (không preventDefault), trình nghe của app không thấy.
+    const bo = event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
+    if (viecNut && event.target === nut && (event.key === 'Enter' || event.key === ' ') && !bo) return;
+    // Tab: về nút đang hiện (bấm chuột ra nền thì focus rơi về body, bàn phím mất đường tới nút).
+    if (viecNut && event.key === 'Tab') nut.focus();
+    event.preventDefault();
   };
   window.addEventListener('keydown', chan, { capture: true });
   document.body.appendChild(overlay);
@@ -265,12 +270,14 @@ let daAnCanhBaoAnh = false; // đã bấm ×: không hiện lại tới lần m�
 let flashTimer = null;
 let slotWatch = null;
 let shownIn = null;
+let daVe = null; // nội dung lần vẽ gần nhất vào shownIn (render)
 
 function currentSlot() {
   return [...document.querySelectorAll('.bstr-drive-slot')].find((el) => el.isConnected) || null;
 }
 
-function bannerEl({ text, level = 'info', action = null }, onClose) {
+/** hienTai(): việc của lần báo mới nhất, đọc lúc bấm (render giữ nguyên nút khi lần báo sau cùng nội dung). */
+function bannerEl({ text, level = 'info', action = null }, onClose, hienTai = () => action) {
   const el = document.createElement('div');
   el.className = 'bstr-gs-banner';
   el.dataset.level = level;
@@ -285,7 +292,7 @@ function bannerEl({ text, level = 'info', action = null }, onClose) {
     button.className = 'bstr-gs-action';
     button.textContent = action.label;
     if (action.anKhiHep) button.dataset.anKhiHep = '';
-    button.addEventListener('click', () => { onClose(); action.run(); });
+    button.addEventListener('click', () => { const viec = hienTai(); onClose(); viec?.run(); });
     right.append(button);
   }
   const close = document.createElement('button');
@@ -302,14 +309,19 @@ function render() {
   ensureCss();
   if (flash && Date.now() - flash.at >= FLASH_MS) flash = null;
   const slot = currentSlot();
-  if (shownIn && shownIn !== slot) shownIn.replaceChildren();
+  const doiCho = shownIn !== slot;
+  if (shownIn && doiCho) shownIn.replaceChildren();
   shownIn = slot;
   if (slot) {
-    const items = [];
-    if (flash) items.push(bannerEl(flash, () => { flash = null; render(); }));
-    if (banner) items.push(bannerEl(banner, clearStatus));
-    if (canhBaoAnh) items.push(bannerEl({ text: canhBaoAnh, level: 'warn' }, () => { daAnCanhBaoAnh = true; setCanhBaoAnh(null); }));
-    slot.replaceChildren(...items);
+    const muc = [];
+    if (flash) muc.push([flash, () => { flash = null; render(); }, () => flash?.action]);
+    if (banner) muc.push([banner, clearStatus, () => banner?.action]);
+    if (canhBaoAnh) muc.push([{ text: canhBaoAnh, level: 'warn' }, () => { daAnCanhBaoAnh = true; setCanhBaoAnh(null); }]);
+    // Cùng nội dung với lần vẽ trước (lượt lưu nền báo lại đúng băng rôn đang hiện): giữ nguyên nút. Dựng lại thì cú bấm rơi đúng lúc
+    // đó mất và bàn phím mất chỗ đang đứng.
+    const ky = JSON.stringify(muc.map(([m]) => [m.text, m.level, m.action?.label, !!m.action?.anKhiHep]));
+    if (doiCho || ky !== daVe || slot.childElementCount !== muc.length) slot.replaceChildren(...muc.map(([m, dong, hienTai]) => bannerEl(m, dong, hienTai)));
+    daVe = ky;
   }
   // Chỉ theo dõi DOM khi còn thứ để hiện: khung đổi theo tài liệu (hoặc chưa có) thì vẽ lại.
   const waiting = !!(banner || flash || canhBaoAnh);

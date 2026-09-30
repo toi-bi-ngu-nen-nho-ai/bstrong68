@@ -109,6 +109,7 @@ export function gopPayload(mayNay, cacBan, now = new Date()) {
   if (!dungDinhDang(mayNay) || !Array.isArray(cacBan) || !cacBan.every(dungDinhDang)) throw loiGop('Bản lưu không đúng định dạng');
   const ra = structuredClone(mayNay);
   const theoId = new Map(ra.workspaces.map((ws) => [ws.id, ws]));
+  const coTruoc = new Map(ra.workspaces.map((ws) => [ws.id, idTaiLieu(ws.stores)])); // tài liệu máy này có trước khi gộp
   const daDoi = new Set(), wsTao = new Set(), thayDoi = {};
   let wsMoi = 0, anhGop = 0;
   for (const ban of cacBan) {
@@ -128,8 +129,10 @@ export function gopPayload(mayNay, cacBan, now = new Date()) {
       for (const docId of doi) daDoi.add(`${ws.id}\n${docId}`);
       anhGop += Object.values(anh).reduce((n, ds) => n + ds.length, 0);
       if (wsTao.has(ws.id) || doi.size || Object.keys(anh).length) {
-        const t = (thayDoi[ws.id] ??= { moi: wsTao.has(ws.id), taiLieu: [], boCapNhat: [], anh: {} });
+        const t = (thayDoi[ws.id] ??= { moi: wsTao.has(ws.id), taiLieu: [], themCapNhat: [], boCapNhat: [], anh: {} });
         for (const docId of doi) if (!t.taiLieu.includes(docId)) t.taiLieu.push(docId);
+        // Tài liệu đổi mà máy này đã có: restore thêm bản gộp thành một update, không ghi đè snapshot (store.js keHoachGhi).
+        for (const docId of doi) if (coTruoc.get(ws.id)?.has(docId) && !t.themCapNhat.includes(docId)) t.themCapNhat.push(docId);
         t.boCapNhat.push(...boCapNhat);
         for (const [ten, ds] of Object.entries(anh)) (t.anh[ten] ??= []).push(...ds);
       }
