@@ -305,21 +305,68 @@ export async function gopVoiDrive() {
   }
 }
 
+const NUT_XEM_NGAY = 'Xem bản trên máy ngay';
+const LOI_THOI_CHO = 'BSTR_THOI_CHO';
+
+/**
+ * Phần B (30/09; chủ dự án: có mạng thì chờ vài giây lấy bản mới nhất, nhưng có giới hạn). Sau CONFIG.choNutMs màn chặn nhập
+ * hiện nút "Xem bản trên máy ngay"; bấm nút hay tới CONFIG.choToiDaMs thì:
+ * - còn đang tải (trước khi ghi): thôi chờ; lời chờ bọc bằng cho() đang dở và mọi lời chờ sau ném lỗi LOI_THOI_CHO, không ghi gì;
+ * - đang ghi (sau ghi()): không làm gì, nút ẩn (ghi dở nguy hiểm hơn chờ);
+ * - đang tải trước ảnh tài liệu đang mở (anh()): bỏ phần ảnh, lời hứa anh() xong ngay (đã hết giờ lúc đang ghi: xong ngay khi vào).
+ * coHan false (máy chưa đồng bộ lần nào: trên máy chỉ có không gian mẫu, xem ngay cũng không có gì để đọc): không nút, không hạn.
+ * Lệnh mạng đang chạy không bị huỷ (drive.js không nhận AbortSignal): kết quả về muộn bị bỏ qua.
+ */
+function henCho(man, coHan) {
+  let giaiDoan = 'tai', denGioNut = false, hetGio = false, daThoi = false, nemThoi, boAnh;
+  const loiThoi = () => Object.assign(new Error('Thôi chờ bản mới nhất'), { code: LOI_THOI_CHO });
+  const thoiCho = new Promise((_, nem) => { nemThoi = nem; });
+  thoiCho.catch(() => {}); // thôi lúc không có lời chờ nào: không thành lỗi chưa bắt
+  const xongAnh = new Promise((r) => { boAnh = r; });
+  const bam = () => {
+    if (giaiDoan === 'tai' && !daThoi) { daThoi = true; nemThoi(loiThoi()); }
+    else if (giaiDoan === 'anh') boAnh();
+  };
+  const hen = coHan ? [
+    setTimeout(() => { denGioNut = true; if (giaiDoan !== 'ghi') man.hienNut(NUT_XEM_NGAY, bam); }, CONFIG.choNutMs),
+    setTimeout(() => { hetGio = true; bam(); }, CONFIG.choToiDaMs),
+  ] : [];
+  return {
+    cho: (p) => Promise.race([p, thoiCho]),
+    /** Sắp ghi vào máy: từ đây không thôi chờ được nữa, nút ẩn. Đã thôi (không có lời chờ nào xen giữa) thì ném, không ghi. */
+    ghi() {
+      if (daThoi) throw loiThoi();
+      giaiDoan = 'ghi';
+      man.anNut();
+    },
+    /** Bắt đầu tải trước ảnh: trả lời hứa xong khi bấm nút hay hết giờ. */
+    anh() {
+      giaiDoan = 'anh';
+      if (hetGio) boAnh();
+      else if (denGioNut) man.hienNut(NUT_XEM_NGAY, bam);
+      return xongAnh;
+    },
+    xong() { hen.forEach(clearTimeout); },
+  };
+}
+
 async function gopNgay() {
   const state = readState();
   const thayThe = !state?.fileId;
-  const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang gộp…');
+  // Phần B (30/09): máy đã từng đồng bộ chờ bản mới nhất có giới hạn (henCho); mọi lời chờ trước khi ghi đi qua hen.cho().
+  const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang lấy bản mới nhất từ máy khác…', { demGiay: true });
+  const hen = henCho(dong, !thayThe);
   let daGhi = false;
   try {
-    const token = await ensureToken();
-    const files = banCanGop(await listVersions(token, await folder()), state, deviceId());
+    const token = await hen.cho(ensureToken());
+    const files = banCanGop(await hen.cho(listVersions(token, await hen.cho(folder()))), state, deviceId());
     if (!files.length) { dong(); return 'khong-can'; }
-    const cacBan = await Promise.all(files.map((f) => downloadJson(token, f.id)));
+    const cacBan = await hen.cho(Promise.all(files.map((f) => downloadJson(token, f.id))));
     const daGop = [...files.map((f) => f.id), ...(state?.daGop || [])].slice(0, 20);
     // Quyết định trước khi ghi gì: bản kia chỉ có những gì máy này đã có thì chỉ nhớ đã gộp. Không sao lưu, không ghi,
     // không tải lên, không tải lại: hai máy không ai sửa gì thì không gộp qua lại mãi.
-    const mayNay = await exportAll();
-    const vao = thayThe ? await boKhongGianMau(mayNay) : mayNay;
+    const mayNay = await hen.cho(exportAll());
+    const vao = thayThe ? await hen.cho(boKhongGianMau(mayNay)) : mayNay;
     const dau = gopPayload(vao, cacBan);
     const { taiLieuGop, wsMoi, anhGop } = dau.thongKe;
     if (!taiLieuGop && !wsMoi && !anhGop && vao.workspaces.length === mayNay.workspaces.length) {
@@ -335,8 +382,9 @@ async function gopNgay() {
       // Bản sao lưu mang ảnh chỉ của workspace sắp bị bỏ (workspace mẫu, boKhongGianMau): ảnh của chúng chưa từng lên Drive.
       const seBo = mayNay.workspaces.map((w) => w.id).filter((id) => !vao.workspaces.some((w) => w.id === id));
       try {
-        await saoLuuTruocKhiGhiDe({ kemAnh: seBo.length ? seBo : false });
+        await hen.cho(saoLuuTruocKhiGhiDe({ kemAnh: seBo.length ? seBo : false }));
       } catch (e) {
+        if (e?.code === LOI_THOI_CHO) throw e; // thôi chờ lúc đang sao lưu: báo như thôi chờ (catch ngoài), không phải lỗi sao lưu
         console.error('[drive-sync] sao lưu trước khi gộp thất bại', e);
         dong();
         if (!baoDriveDay(e)) {
@@ -350,12 +398,13 @@ async function gopNgay() {
     // Vân tay không đổi (không ai ghi gì từ lúc quyết định) thì dùng lại kết quả gộp lần đầu: gộp lại tốn cả giây khi
     // nhiều tài liệu, sau màn chặn nhập.
     let ketQua = dau;
-    if (fingerprint(await exportAll({ maHoa: false })) !== fingerprint(mayNay)) {
-      let moi = await exportAll();
-      if (thayThe) moi = await boKhongGianMau(moi);
+    if (fingerprint(await hen.cho(exportAll({ maHoa: false }))) !== fingerprint(mayNay)) {
+      let moi = await hen.cho(exportAll());
+      if (thayThe) moi = await hen.cho(boKhongGianMau(moi));
       ketQua = gopPayload(moi, cacBan);
     }
     const { payload, thongKe, thayDoi } = ketQua;
+    hen.ghi(); // từ đây không thôi chờ được nữa (nút ẩn): ghi dở nguy hiểm hơn chờ
     daGhi = true;
     kenh?.postMessage('da-ghi'); // tab đang chờ: dữ liệu trên máy sắp đổi, khoá nhả thì tải lại
     // Chỉ ghi phần đã đổi (thayDoi), không xoá sạch kho: kho của app có thể đang gộp update của tài liệu không đổi.
@@ -371,12 +420,13 @@ async function gopNgay() {
     // 20 giây) rồi mới tải lại trang; ảnh khác tải nền sau khi tải lại (taiAnhNen).
     const mo = docDangMo();
     if (mo) {
-      let hen;
+      let henAnh;
       await Promise.race([
         taiAnhThieu(token, await folder(), { chiTaiLieu: mo }),
-        new Promise((r) => { hen = setTimeout(r, 20000); }),
+        new Promise((r) => { henAnh = setTimeout(r, 20000); }),
+        hen.anh(), // Phần B: bấm "Xem bản trên máy ngay" hay hết giờ thì bỏ phần ảnh, tải lại với chữ đã gộp
       ]).catch((e) => console.error('[drive-sync] tải trước ảnh tài liệu đang mở thất bại, sẽ tải nền', e))
-        .finally(() => clearTimeout(hen));
+        .finally(() => clearTimeout(henAnh));
     }
     // Địa chỉ đang mở có thể trỏ vào workspace vừa bỏ: về trang gốc, app tự mở workspace còn trong danh sách.
     if (bo.length) location.replace('/');
@@ -384,6 +434,14 @@ async function gopNgay() {
     return 'xong';
   } catch (e) {
     dong();
+    if (e?.code === LOI_THOI_CHO) {
+      // Thôi chờ trước khi ghi (bấm nút hay hết giờ): máy chưa bị đổi, không nhớ đã gộp (lần sau gộp lại). Tab khác đang chờ khoá
+      // không nhận 'da-ghi' nên mở lại, không tải lại. Mở app chạy tiếp như gộp lỗi: tải nền ảnh, cài lượt lưu nền.
+      setStatus('Chưa lấy được bản mới nhất (mạng yếu). Đang xem bản trên máy.', {
+        persist: true, level: 'warn', action: { label: 'Thử lại', run: () => gopVoiDrive() },
+      });
+      return 'huy';
+    }
     if (e?.code === 'BSTR_BACKUP_INVALID') {
       kenh?.postMessage('khong-ghi'); // restore kiểm tra đầu vào trước khi ghi: máy chưa bị đổi, tab đang chờ khỏi tải lại
       console.error('[drive-sync] bản lưu không qua kiểm tra đầu vào', e);
@@ -402,6 +460,8 @@ async function gopNgay() {
       persist: true, level: 'error', action: { label: 'Thử lại', run: () => gopVoiDrive() },
     });
     return 'loi';
+  } finally {
+    hen.xong();
   }
 }
 
@@ -671,7 +731,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
 
     const token = await ensureToken();
     const files = await listVersions(token, await folder());
-    // Tự gộp: thành công thì trang tải lại. Lỗi thì giữ lời báo, lượt lưu nền 2 phút sau sẽ lưu phần máy này. Có mạng lại giữa
+    // Tự gộp: thành công thì trang tải lại. Lỗi hay thôi chờ (Phần B) thì giữ lời báo, lượt lưu nền 2 phút sau lưu phần máy này. Có mạng lại giữa
     // phiên thì máy đã đồng bộ không tự gộp (không chặn màn hình, không tải lại trang khi đang đọc/gõ; chủ dự án chọn 29/09):
     // lượt lưu dưới đây báo băng rôn "Tải lại để gộp". Máy chưa đồng bộ lần nào vẫn gộp: lưu trước thì không gian mẫu lên Drive.
     const state = readState();

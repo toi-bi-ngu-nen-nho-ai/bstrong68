@@ -35,6 +35,10 @@ export const CONFIG = {
   anhMultipartToiDa: 5 * 1024 * 1024,
   anhSongSong: 6,
   autoSaveMs: 2 * 60 * 1000,
+  // Phần B (30/09): mở app mà máy khác có bản chưa gộp thì chờ bản mới nhất: sau choNutMs hiện nút "Xem bản trên máy ngay",
+  // tới choToiDaMs mà chưa tải xong thì tự thôi chờ (không ghi gì). Đã bắt đầu ghi thì không thôi (sync.js henCho).
+  choNutMs: 10 * 1000,
+  choToiDaMs: 30 * 1000,
   signInTimeoutMs: 120 * 1000,
   syncStores: ['snapshots', 'updates', 'blobs', 'clocks', 'peerClocks'],
   // Id tài liệu mẫu ("Bắt đầu sử dụng", "Cách sử dụng Thư mục và Thẻ") — giữ
