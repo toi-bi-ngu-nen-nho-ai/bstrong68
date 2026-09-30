@@ -67,6 +67,12 @@ async function listByPrefix(token, folderId, prefix, fields) {
   return (r.files || []).filter((f) => typeof f.name === 'string' && f.name.startsWith(prefix));
 }
 
+/** Email tài khoản Google của token: menu hiện nó, và nhận ra máy vừa đăng nhập tài khoản khác (sync.js kiemTaiKhoan). */
+export async function taiKhoanDrive(token) {
+  const r = await call(token, '/about?fields=user(emailAddress)');
+  return r?.user?.emailAddress || null;
+}
+
 export function listVersions(token, folderId) {
   return listByPrefix(token, folderId, CONFIG.filePrefix, 'id,name,createdTime,size,appProperties');
 }

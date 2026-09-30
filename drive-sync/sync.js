@@ -3,7 +3,7 @@ import { exportAll, restore, deviceId, taiLieuMauBundle, laKhongGianMau, maHoa }
 import { getToken, isSignedIn, signIn, signOut } from './auth.js';
 import {
   ensureFolder, uploadJson, listVersions, listBackups, downloadJson, pruneVersions, pruneBackups,
-  listSelfTest, deleteFile,
+  listSelfTest, deleteFile, taiKhoanDrive,
 } from './drive.js';
 import {
   showSignIn, showShrinkWarning, setStatus, clearStatus, moManChan, setCanhBaoAnh,
@@ -15,23 +15,43 @@ const readState = () => {
   try { return JSON.parse(localStorage.getItem(LS.state) || 'null'); }
   catch { return null; }
 };
-const writeState = (s) => localStorage.setItem(LS.state, JSON.stringify(s));
+const writeState = (s) => localStorage.setItem(LS.state, JSON.stringify(taiKhoan ? { ...s, taiKhoan } : s));
+
+// Tài khoản Google của trạng thái đồng bộ. Mỗi tài khoản một Drive: hai máy đăng nhập hai tài khoản thì không bao giờ thấy nhau (lỗi thật
+// 30/09: iPhone một tài khoản, máy tính một tài khoản, app không cho biết). Menu hiện tài khoản (moTaLanLuu).
+let taiKhoan = null;
+
+/**
+ * Trạng thái cũ chưa ghi tài khoản: nhận tài khoản hiện tại. Vừa đăng nhập bằng tài khoản KHÁC: trạng thái cũ (bản đang theo, bản đã gộp)
+ * là của Drive kia, bỏ; máy coi như chưa đồng bộ lần nào với tài khoản mới (lấy dữ liệu từ Drive, bỏ không gian mẫu, gộp tài liệu trên
+ * máy). Chỉ hỏi Drive khi chưa biết tài khoản hay vừa đăng nhập: tài khoản chỉ đổi được qua đăng nhập. Hỏi hỏng thì thôi, không chặn đồng bộ.
+ */
+async function kiemTaiKhoan(token, vuaDangNhap) {
+  const state = readState();
+  if (state?.taiKhoan && !vuaDangNhap) { taiKhoan = state.taiKhoan; return; }
+  const tk = await taiKhoanDrive(token).catch((e) => { console.warn('[drive-sync] chưa biết tài khoản Google', e); return null; });
+  if (!tk) return;
+  taiKhoan = tk;
+  if (state?.taiKhoan && state.taiKhoan !== tk) { localStorage.removeItem(LS.state); return 'doi'; }
+  if (state) writeState(state);
+}
 
 /**
  * Dòng lặng trong menu Không gian làm việc: lần gần nhất bản trên Drive khớp máy này. Lần lưu nền
  * không bật toast, nên đây là chỗ người dùng xem được lần lưu cuối.
  */
-export function moTaLanLuu(now = new Date()) {
-  const savedAt = readState()?.savedAt;
-  const d = savedAt ? new Date(savedAt) : null;
+export function moTaLanLuu(now = new Date(), kemTaiKhoan = true) {
+  const s = readState();
+  const d = s?.savedAt ? new Date(s.savedAt) : null;
   if (!d || Number.isNaN(d.getTime())) return 'Chưa lưu lên Drive lần nào';
   const gio = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === now.toDateString() ? `Đã lưu Drive lúc ${gio}` : `Đã lưu Drive lúc ${gio} ${d.toLocaleDateString('vi-VN')}`;
+  const tk = kemTaiKhoan && s.taiKhoan ? ` · ${s.taiKhoan}` : ''; // máy nào đồng bộ với tài khoản nào: nhìn là biết
+  return (d.toDateString() === now.toDateString() ? `Đã lưu Drive lúc ${gio}` : `Đã lưu Drive lúc ${gio} ${d.toLocaleDateString('vi-VN')}`) + tk;
 }
 
 /** Băng rôn khi mở app lúc mất mạng: đang xem bản trên máy, kèm lần lưu Drive gần nhất. */
 export function cauKhongMang(now = new Date()) {
-  const lan = moTaLanLuu(now).replace(/^Đã lưu/, 'lưu').replace(/^Chưa/, 'chưa');
+  const lan = moTaLanLuu(now, false).replace(/^Đã lưu/, 'lưu').replace(/^Chưa/, 'chưa');
   return `Không có mạng: đang xem bản trên máy (${lan}). Có mạng lại sẽ tự lưu lên Drive.`;
 }
 
@@ -116,7 +136,11 @@ export async function ensureToken() {
         baoChuaDongBo();
         throw e;
       }
-      return await signIn();
+      const token = await signIn();
+      // Đăng nhập lại có thể bằng tài khoản khác (hộp chọn tài khoản của Google): trạng thái đồng bộ là của Drive cũ. Bỏ và tải lại trang:
+      // lần mở sau làm như máy mới với tài khoản đó, không lưu dữ liệu máy này vào Drive mới theo trạng thái của Drive cũ.
+      if (await kiemTaiKhoan(token, true) === 'doi') { location.reload(); return new Promise(() => {}); }
+      return token;
     } finally {
       dangHoiDangNhap = false;
     }
@@ -739,6 +763,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
     return;
   }
 
+  let vuaDangNhap = false;
   try {
     if (!isSignedIn()) {
       const choice = await showSignIn();
@@ -749,6 +774,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
         return;
       }
       await signIn();
+      vuaDangNhap = true;
     } else {
       // Mất mạng: mở bằng bản trên máy, không chờ Drive; có mạng lại thì tự chạy lại (baoKhongMang).
       if (globalThis.navigator?.onLine === false) { baoKhongMang(); return; }
@@ -761,6 +787,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
     Promise.resolve(globalThis.navigator?.storage?.persist?.()).catch(() => {});
 
     const token = await ensureToken();
+    await kiemTaiKhoan(token, vuaDangNhap);
     const files = await listVersions(token, await folder());
     // Tự gộp: thành công thì trang tải lại. Lỗi hay thôi chờ (Phần B) thì giữ lời báo, lượt lưu nền 2 phút sau lưu phần máy này. Có mạng lại giữa
     // phiên thì máy đã đồng bộ không tự gộp (không chặn màn hình, không tải lại trang khi đang đọc/gõ; chủ dự án chọn 29/09):
