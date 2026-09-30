@@ -301,7 +301,7 @@ export async function gopVoiDrive() {
   busy = true;
   try {
     const kq = await khoaDongBo(gopNgay);
-    // Tab khác đang giữ khoá (lưu, gộp hay nhận tài liệu): lượt này không chạy. Băng rôn của nút vừa bấm đã bị gỡ, và start()
+    // Khoá đang bị giữ (tab khác lưu hay gộp; bước nhận tài liệu ở tab này hay tab khác): lượt này không chạy. Băng rôn của nút vừa bấm đã bị gỡ, và start()
     // đã clearStatus(): báo lại bản chưa gộp, không im lặng.
     if (kq === undefined) baoCanGop([kq]);
     return kq;

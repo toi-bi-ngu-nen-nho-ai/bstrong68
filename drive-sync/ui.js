@@ -163,7 +163,8 @@ export function when(iso, now = Date.now()) {
  * liệu đang mở; xong thì trang tự tải lại): không bấm, không gõ được vào tài liệu phía sau, để không có chữ nào gõ đúng
  * lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
  * Phần B (30/09): demGiay thêm dòng "Đã chờ N giây". Hàm đóng màn có thêm hienNut(nhan, viec): hiện một nút và focus vào nút
- * (trên nút, Enter và phím cách vẫn bấm được; phím khác vẫn bị chặn), và anNut(): focus về màn, ẩn nút, bỏ việc của nút.
+ * (trên nút, Enter và phím cách vẫn bấm được; phím khác vẫn bị chặn; hộp thoại khác mở trên màn đang giữ focus thì không giành),
+ * và anNut(): focus về màn, ẩn nút, bỏ việc của nút.
  * Chặn nhập hai lớp: keydown chặn ở window; mọi phần tử khác của body inert trong lúc màn mở (trình duyệt không cho focus vào đó,
  * kể cả focus() của app lúc mở tài liệu, và không đưa vào đó chữ của bộ gõ, bảng emoji, đọc chính tả: những chữ này không qua
  * keydown). Đóng màn thì gỡ inert đúng những phần tử đã đặt. Phần tử gắn vào body SAU khi màn mở (hộp đăng nhập do ensureToken mở
@@ -210,7 +211,12 @@ export function moManChan(text, { demGiay = false } = {}) {
     // Không trả về trình soạn thảo: phím còn đang giữ sẽ gõ vào tài liệu.
     if (truoc?.isConnected && truoc.closest?.('.bstr-gs-overlay')) truoc.focus();
   };
-  dong.hienNut = (nhan, viec) => { viecNut = viec; nut.textContent = nhan; nut.hidden = false; nut.focus(); };
+  // Hộp thoại khác mở trên màn (hộp đăng nhập) đang giữ focus thì nút không giành: Enter ở đó sẽ bấm nhầm nút này.
+  dong.hienNut = (nhan, viec) => {
+    viecNut = viec; nut.textContent = nhan; nut.hidden = false;
+    const khac = document.activeElement?.closest?.('.bstr-gs-overlay');
+    if (!khac || khac === overlay) nut.focus();
+  };
   // Focus về màn TRƯỚC khi ẩn: nút đang có focus mà bị ẩn thì focus rơi về body.
   dong.anNut = () => { viecNut = null; if (document.activeElement === nut) hop.focus(); nut.hidden = true; };
   return dong;

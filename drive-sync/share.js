@@ -3,7 +3,7 @@ import { convertDocumentUpdate } from '../bstr-backup.js';
 import * as store from './store.js';
 import { ensureToken, folder, saoLuuTruocKhiGhiDe } from './sync.js';
 import { uploadJson, moChoMoiNguoiDoc, taiJsonCongKhai, listShares, prune } from './drive.js';
-import { setStatus } from './ui.js';
+import { setStatus, clearStatus } from './ui.js';
 import { taiAnhThieu } from './anh.js';
 
 /**
@@ -327,10 +327,16 @@ export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu, banCu 
  * Cả bốn bước giữ khoá đồng bộ 'bstr-drive-sync' (chờ tới lượt, mọi tab): lượt gộp ghi bản gốc giữa lúc đọc (1) và ghi (4)
  * thì bước 4 ghi đè bản gốc cũ lên, mất dòng tài liệu vừa gộp; gộp xong tải lại trang thì cắt ngang bước nhận. Không được
  * gọi hàm này từ bên trong khoá đó (khoá không vào lại được: treo mãi). Trình duyệt không có Web Locks thì chạy thẳng.
+ * Phải chờ thì báo băng rôn: tab giữ khoá có khi giữ cả phút (tải ảnh lên) hay tới khi người dùng trả lời hộp đăng nhập ở đó.
  */
 export async function nhanGoi(goi, tuyChon = {}) {
   const locks = globalThis.navigator?.locks;
-  return locks?.request ? locks.request('bstr-drive-sync', () => nhanGoiTrongKhoa(goi, tuyChon)) : nhanGoiTrongKhoa(goi, tuyChon);
+  if (!locks?.request) return nhanGoiTrongKhoa(goi, tuyChon);
+  return locks.request('bstr-drive-sync', { ifAvailable: true }, (lock) => {
+    if (lock) return nhanGoiTrongKhoa(goi, tuyChon);
+    setStatus('Đang chờ app ở thẻ khác lưu xong rồi mới nhận tài liệu. Chờ lâu thì hãy xem các thẻ khác của app.', { persist: true });
+    return locks.request('bstr-drive-sync', () => { clearStatus(); return nhanGoiTrongKhoa(goi, tuyChon); });
+  });
 }
 
 async function nhanGoiTrongKhoa(goi, { taiLai = true } = {}) {
