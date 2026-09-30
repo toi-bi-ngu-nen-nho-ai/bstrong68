@@ -9,7 +9,7 @@ const req = (r) => new Promise((res, rej) => {
 
 const txDone = (tx) => new Promise((res, rej) => {
   tx.oncomplete = () => res();
-  tx.onerror = () => rej(tx.error);
+  tx.onerror = (e) => rej(e?.target?.error || tx.error); // lúc lỗi của một lệnh nổi lên, tx.error còn null: lấy lỗi của chính lệnh đó
   tx.onabort = () => rej(tx.error || new Error('giao dịch bị huỷ'));
 });
 
@@ -636,7 +636,7 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = 
     const can = ['snapshots', 'updates', 'clocks', 'blobs', 'blobData']
       .filter((n) => db.objectStoreNames.contains(n));
     if (!can.includes('snapshots')) throw new Error(`Cơ sở dữ liệu ${dbName(wsId)} thiếu store snapshots`);
-    const now = new Date();
+    let now = new Date();
 
     const snapOs0 = db.transaction('snapshots', 'readonly').objectStore('snapshots');
     const cuTaiLieu = await req(snapOs0.get(docId));
@@ -648,34 +648,43 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = 
       ? await req(db.transaction('updates', 'readonly').objectStore('updates').index('docId').getAll(docId))
       : [];
 
-    const tx = db.transaction(can, 'readwrite');
-    const finished = txDone(tx);
-    try {
-    const snaps = tx.objectStore('snapshots');
-    if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
-    if (can.includes('updates')) {
-      const ups = tx.objectStore('updates');
-      // add, không put: trùng khoá [docId, createdAt] với update của app thì huỷ cả giao dịch, không ghi đè update đó.
-      if (themUpdate) ups.add({ docId, bin: snapshotBin, createdAt: now });
-      for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
-      ups.add({ docId: wsId, bin: rootBin, createdAt: now });
-    } else snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
-    if (can.includes('clocks')) {
-      const cl = tx.objectStore('clocks');
-      cl.put({ docId, timestamp: now });
-      cl.put({ docId: wsId, timestamp: now });
+    for (let lan = 1; ; lan++) {
+      const tx = db.transaction(can, 'readwrite');
+      const finished = txDone(tx);
+      try {
+        const snaps = tx.objectStore('snapshots');
+        if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
+        if (can.includes('updates')) {
+          const ups = tx.objectStore('updates');
+          // add, không put: trùng khoá [docId, createdAt] với update của app thì huỷ cả giao dịch, không ghi đè update đó.
+          if (themUpdate) ups.add({ docId, bin: snapshotBin, createdAt: now });
+          for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
+          ups.add({ docId: wsId, bin: rootBin, createdAt: now });
+        } else snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
+        if (can.includes('clocks')) {
+          const cl = tx.objectStore('clocks');
+          cl.put({ docId, timestamp: now });
+          cl.put({ docId: wsId, timestamp: now });
+        }
+        if (can.includes('blobs')) {
+          const os = tx.objectStore('blobs');
+          for (const rec of decodedBlobs) os.put(rec);
+        }
+        if (can.includes('blobData')) {
+          const os = tx.objectStore('blobData');
+          for (const rec of decodedBlobData) os.put(rec);
+        }
+      } catch (error) { tx.abort(); await finished.catch(()=>{}); throw error; }
+      try {
+        await finished;
+        return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu, gop: themUpdate };
+      } catch (e) {
+        // Trùng khoá với update app ghi cùng mili giây: giao dịch đã huỷ, chưa ghi gì. Như kho của app, lùi 1 ms rồi ghi lại (tối
+        // đa 10 lần); trước đây bước nhận hỏng và báo nhầm "liên kết có thể đã hết hạn".
+        if (e?.name !== 'ConstraintError' || lan >= 10) throw e;
+        now = new Date(now.getTime() + 1);
+      }
     }
-    if (can.includes('blobs')) {
-      const os = tx.objectStore('blobs');
-      for (const rec of decodedBlobs) os.put(rec);
-    }
-    if (can.includes('blobData')) {
-      const os = tx.objectStore('blobData');
-      for (const rec of decodedBlobData) os.put(rec);
-    }
-    } catch (error) { tx.abort(); await finished.catch(()=>{}); throw error; }
-    await finished;
-    return { wsId, docId, daXoaUpdates: cuUpdates.length, daCoSan: !!cuTaiLieu, gop: themUpdate };
   } finally {
     db.close();
   }

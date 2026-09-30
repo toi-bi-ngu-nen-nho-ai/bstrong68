@@ -169,9 +169,14 @@ async function taiLenBanMayNay(token, payload) {
   });
 }
 
+// Tab này đang xem bản chưa có bản mới nhất của máy khác (có bản chưa gộp; hay lượt gộp chưa xong: thôi chờ, lỗi, khoá bận). Lưu hỏng
+// thì lời báo lỗi nói cả ý này: câu "Chưa lưu được…" không được thay mất lời nhắc đang xem bản trên máy (T2-4).
+let chuaBanMoi = false;
+
 /** Máy khác có bản chưa gộp: băng rôn chờ người dùng bấm (không tự tải lại khi đang gõ). Trả true nếu đã báo. */
 function baoCanGop(canGop) {
-  if (!canGop.length) return false;
+  chuaBanMoi = canGop.length > 0;
+  if (!chuaBanMoi) return false;
   setStatus('Máy khác vừa có thay đổi.', {
     persist: true, level: 'info', action: { label: 'Tải lại để gộp', run: () => gopVoiDrive() },
   });
@@ -195,7 +200,9 @@ export async function saveNow({ force = false, background = false, dsBan = null 
  */
 function baoDriveDay(e) {
   if (!/storageQuotaExceeded/.test(e?.message || '')) return false;
-  setStatus('Google Drive đã đầy, chưa lưu được. Tài liệu vẫn nằm trên máy.', { persist: true, level: 'error' });
+  setStatus(`Google Drive đã đầy, chưa lưu được. ${chuaBanMoi ? 'Đang xem bản trên máy, chưa có bản mới nhất.' : 'Tài liệu vẫn nằm trên máy.'}`, {
+    persist: true, level: 'error',
+  });
   return true;
 }
 
@@ -263,7 +270,9 @@ async function luu({ force, background, dsBan }) {
   } catch (e) {
     console.error('[drive-sync] lưu thất bại', e);
     if (!baoDriveDay(e)) {
-      setStatus('Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
+      setStatus(chuaBanMoi
+        ? 'Chưa lưu được lên Drive và chưa lấy được bản mới nhất. Đang xem bản trên máy; ứng dụng sẽ tự thử lại.'
+        : 'Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
         persist: true, level: 'error', action: { label: 'Thử lại ngay', run: () => saveNow() },
       });
     }
@@ -363,6 +372,7 @@ function henCho(man, coHan) {
 async function gopNgay() {
   const state = readState();
   const thayThe = !state?.fileId;
+  chuaBanMoi = true; // tới khi biết không còn gì cần gộp (khong-can, khong-doi); gộp xong thì trang tải lại
   // Phần B (30/09): máy đã từng đồng bộ chờ bản mới nhất có giới hạn (henCho); mọi lời chờ trước khi ghi đi qua hen.cho().
   const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang lấy bản mới nhất từ máy khác…', { demGiay: true });
   const hen = henCho(dong, !thayThe);
@@ -370,7 +380,7 @@ async function gopNgay() {
   try {
     const token = await hen.cho(ensureToken());
     const files = banCanGop(await hen.cho(listVersions(token, await hen.cho(folder()))), state, deviceId());
-    if (!files.length) { dong(); return 'khong-can'; }
+    if (!files.length) { chuaBanMoi = false; dong(); return 'khong-can'; }
     const cacBan = await hen.cho(Promise.all(files.map((f) => downloadJson(token, f.id))));
     const daGop = [...files.map((f) => f.id), ...(state?.daGop || [])].slice(0, 20);
     // Quyết định trước khi ghi gì: bản kia chỉ có những gì máy này đã có thì chỉ nhớ đã gộp. Không sao lưu, không ghi,
@@ -381,6 +391,7 @@ async function gopNgay() {
     const { taiLieuGop, wsMoi, anhGop } = dau.thongKe;
     if (!taiLieuGop && !wsMoi && !anhGop && vao.workspaces.length === mayNay.workspaces.length) {
       writeState({ ...(state || {}), deviceId: deviceId(), daGop });
+      chuaBanMoi = false;
       dong();
       setStatus('Không có thay đổi mới');
       return 'khong-doi';
