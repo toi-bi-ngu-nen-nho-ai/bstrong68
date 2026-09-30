@@ -6,7 +6,7 @@ import { shareFile, listShared, ensureFolder, listShares, quyenCuaTep } from './
 import * as share from './share.js?bstr-login=7';
 import { setStatus, showNhan } from './ui.js';
 import { createLoginFlow } from './login.js?bstr-login=3';
-import { linkNhan, createNhanFlow } from './nhan.js';
+import { linkNhan, createNhanFlow } from './nhan.js?bstr-login=1';
 
 const login = createLoginFlow({
   start: sync.start,

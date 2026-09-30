@@ -625,8 +625,9 @@ export async function nguonChiaSe(docId) {
  * Tài liệu mới: ghi snapshot, `updates` sót lại của id này bị xoá.
  * Nhận lại bản đã nhận (`gop`): snapshotBin là bản trên máy đã gộp bản người gửi. Ghi nó thành MỘT update mới, không
  * đụng snapshot hay update đang có: phần gõ thêm trên máy giữa lúc đọc và lúc ghi vẫn còn, lần mở sau app gộp tất cả.
- * `updates` của tài liệu GỐC thì giữ nguyên — rootBin đã gộp sẵn chúng
- * rồi, và gộp lại một update đã biết là vô hại trong Yjs.
+ * Tài liệu GỐC: rootBin (đã gộp snapshot + updates lúc đọc) thêm thành MỘT update, không ghi đè snapshot: giữa lúc đọc và lúc
+ * ghi (có sao lưu lên Drive), kho của app có thể đã gộp update của bản gốc vào snapshot — dòng tài liệu vừa tạo — rồi xoá update
+ * đó; ghi đè bằng bản đọc từ trước là mất dòng ấy. Gộp lại phần đã biết là vô hại trong Yjs.
  */
 export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = false, blobs = [], blobData = [] }) {
   const decodedBlobs=blobs.map(decode),decodedBlobData=blobData.map(decode);
@@ -652,13 +653,13 @@ export async function ghiTaiLieuNhan(wsId, { docId, snapshotBin, rootBin, gop = 
     try {
     const snaps = tx.objectStore('snapshots');
     if (!themUpdate) snaps.put({ docId, bin: snapshotBin, createdAt: cuTaiLieu?.createdAt || now, updatedAt: now });
-    snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
     if (can.includes('updates')) {
       const ups = tx.objectStore('updates');
       // add, không put: trùng khoá [docId, createdAt] với update của app thì huỷ cả giao dịch, không ghi đè update đó.
       if (themUpdate) ups.add({ docId, bin: snapshotBin, createdAt: now });
       for (const u of cuUpdates) ups.delete([u.docId, u.createdAt]);
-    }
+      ups.add({ docId: wsId, bin: rootBin, createdAt: now });
+    } else snaps.put({ docId: wsId, bin: rootBin, createdAt: cuRoot?.createdAt || now, updatedAt: now });
     if (can.includes('clocks')) {
       const cl = tx.objectStore('clocks');
       cl.put({ docId, timestamp: now });

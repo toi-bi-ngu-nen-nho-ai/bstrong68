@@ -178,12 +178,12 @@ function baoCanGop(canGop) {
   return true;
 }
 
-/** dsBan: danh sách bản lưu start() vừa đọc, khỏi hỏi Drive lần nữa. */
+/** dsBan: danh sách bản lưu start() vừa đọc, khỏi hỏi Drive lần nữa. Trả false nếu lượt lưu đã báo lỗi hay cảnh báo (băng rôn). */
 export async function saveNow({ force = false, background = false, dsBan = null } = {}) {
   if (busy) return;
   busy = true;
   try {
-    await khoaDongBo(() => luu({ force, background, dsBan }));
+    return await khoaDongBo(() => luu({ force, background, dsBan }));
   } finally {
     busy = false;
   }
@@ -216,7 +216,7 @@ async function luu({ force, background, dsBan }) {
     // Máy này tự bảo vệ mình: không còn gì trong máy thì tuyệt đối không ghi đè.
     if (payload.workspaces.length === 0) {
       setStatus('Không thấy dữ liệu trên máy nên chưa lưu, để không ghi đè bản tốt trên Drive', { persist: true, level: 'warn' });
-      return;
+      return false;
     }
 
     const vanTay = fingerprint(payload);
@@ -237,7 +237,7 @@ async function luu({ force, background, dsBan }) {
         setStatus('Số tài liệu trên máy ít đi so với lần lưu trước, nên chưa lưu lên Drive.', {
           persist: true, level: 'warn', action: { label: 'Xem và xác nhận', run: () => saveNow() },
         });
-        return;
+        return false;
       }
       const dongY = await showShrinkWarning({ oldCount: state.soTaiLieu, newCount: soTaiLieu });
       if (!dongY) { setStatus('Đã huỷ lưu'); return; }
@@ -262,10 +262,12 @@ async function luu({ force, background, dsBan }) {
     if (!baoCanGop(canGop) && !background) setStatus('Đã lưu lên Drive');
   } catch (e) {
     console.error('[drive-sync] lưu thất bại', e);
-    if (baoDriveDay(e)) return;
-    setStatus('Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
-      persist: true, level: 'error', action: { label: 'Thử lại ngay', run: () => saveNow() },
-    });
+    if (!baoDriveDay(e)) {
+      setStatus('Chưa lưu được lên Drive. Tài liệu vẫn nằm trên máy; ứng dụng sẽ tự thử lại.', {
+        persist: true, level: 'error', action: { label: 'Thử lại ngay', run: () => saveNow() },
+      });
+    }
+    return false;
   }
 }
 
@@ -752,15 +754,17 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
     // Không chờ: ảnh về dần sau khi chữ đã đọc và gõ được, không chờ lượt lưu dưới đây (có khi cả chục lệnh Drive nối
     // tiếp). Thông báo của nó là thông báo ngắn và ô cảnh báo riêng, clearStatus của lượt lưu không xoá.
     taiAnhNen();
+    let luuHong = false;
     if (gop === 'khong-doi') {
       // Không có gì cần gộp (hay gộp mà máy này không đổi gì): lưu ngay một lần ở tiền cảnh. Lần lưu nền không được mở
       // hộp thoại, nên khi số tài liệu ít đi thì chỉ lần lưu này hỏi được người dùng.
-      await saveNow({ force: !files.length, dsBan: files });
+      luuHong = await saveNow({ force: !files.length, dsBan: files }) === false;
     }
 
     // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay. Chỉ khi lần mở này không còn gì
-    // cần gộp: thôi chờ, gộp lỗi hay khoá bận thì câu "Đã gộp…" của lần trước đè mất lời báo đang xem bản chưa gộp; bỏ cờ.
-    if (gop === 'khong-doi') baoDaKhoiPhuc();
+    // cần gộp và lượt lưu đó không báo lỗi: thôi chờ, gộp lỗi, khoá bận hay lưu hỏng (Drive đầy…) thì câu "Đã gộp…" đè mất lời báo
+    // quan trọng hơn; bỏ cờ.
+    if (gop === 'khong-doi' && !luuHong) baoDaKhoiPhuc();
     else try { globalThis.sessionStorage?.removeItem(DA_KHOI_PHUC); } catch {}
     setInterval(() => {
       saveNow({ background: true });

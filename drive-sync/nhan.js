@@ -9,7 +9,8 @@ export const linkNhan = (origin, fileId) => `${origin}/?nhan=${encodeURIComponen
 /**
  * Hỏi người dùng, đăng nhập nếu cần (bước nhận sao lưu máy lên Drive trước khi ghi), chờ app tạo xong
  * workspace, nhận rồi mở tài liệu. Khoá chỉ bị xoá khi đã có kết quả: nếu trang tải lại giữa chừng (đăng
- * nhập xong mà lấy dữ liệu từ Drive về), lần mở sau nhận tiếp. Mỗi lần tải trang chỉ chạy một lần.
+ * nhập xong mà lấy dữ liệu từ Drive về; thẻ khác gộp xong trong lúc bước nhận còn chờ khoá đồng bộ), lần mở sau
+ * nhận tiếp. Nhận lại lần nữa vô hại: bản đã nhận thì gộp. Mỗi lần tải trang chỉ chạy một lần.
  */
 export function createNhanFlow({ storage, idTuLink, hoiNhan, daDangNhap, dangNhap, choWorkspace, nhan, mo, setStatus }) {
   const doc = () => { try { return storage.getItem(NHAN_KEY); } catch { return null; } };
@@ -38,8 +39,9 @@ export function createNhanFlow({ storage, idTuLink, hoiNhan, daDangNhap, dangNha
     }
     try {
       await choWorkspace();
+      const kq = await nhan(id);
       xoa();
-      mo(await nhan(id));
+      mo(kq);
       return 'da-nhan';
     } catch (e) {
       xoa();
