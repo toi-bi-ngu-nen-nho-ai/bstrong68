@@ -208,6 +208,7 @@ async function luu({ force, background, dsBan }) {
     // rồi báo băng rôn. Không mở hộp thoại nào ở đây.
     const canGop = banCanGop(dsBan || await listVersions(token, await folder()), state, deviceId());
     clearStatus();
+    baoCanGop(canGop); // tải lên có khi hàng chục giây (mạng yếu): trong lúc đó vẫn báo máy này đang xem bản chưa gộp
 
     // Chưa mã hoá: đủ lấy vân tay và đếm tài liệu. Phần lớn lượt lưu nền không đổi gì; mã hoá cả máy chỉ khi tải lên.
     const payload = await exportAll({ maHoa: false });
@@ -299,7 +300,11 @@ export async function gopVoiDrive() {
   if (busy) { setStatus('Đang đồng bộ, thử lại sau ít giây'); return; }
   busy = true;
   try {
-    return await khoaDongBo(gopNgay);
+    const kq = await khoaDongBo(gopNgay);
+    // Tab khác đang giữ khoá (lưu, gộp hay nhận tài liệu): lượt này không chạy. Băng rôn của nút vừa bấm đã bị gỡ, và start()
+    // đã clearStatus(): báo lại bản chưa gộp, không im lặng.
+    if (kq === undefined) baoCanGop([kq]);
+    return kq;
   } finally {
     busy = false;
   }
@@ -753,8 +758,10 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
       await saveNow({ force: !files.length, dsBan: files });
     }
 
-    // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay.
-    baoDaKhoiPhuc();
+    // Sau lượt lưu lúc mở app: lượt đó gọi clearStatus(), báo trước thì câu xác nhận bị xoá ngay. Chỉ khi lần mở này không còn gì
+    // cần gộp: thôi chờ, gộp lỗi hay khoá bận thì câu "Đã gộp…" của lần trước đè mất lời báo đang xem bản chưa gộp; bỏ cờ.
+    if (gop === 'khong-doi') baoDaKhoiPhuc();
+    else try { globalThis.sessionStorage?.removeItem(DA_KHOI_PHUC); } catch {}
     setInterval(() => {
       saveNow({ background: true });
       if (conAnhCanTai) taiAnhNen();

@@ -27,7 +27,7 @@ try {
     }
   }
   import('./bstr-ngoai-tuyen.js?bstr-sw=3').then((m) => m.batNgoaiTuyen()).catch((e) => console.warn('[bstr] chưa bật được mở không cần mạng', e));
-  await import('./drive-sync/index.js?bstr-login=8');
+  await import('./drive-sync/index.js?bstr-login=9');
 } catch (error) {
   console.error('[bstr] Không thể khởi động an toàn',error);
   document.getElementById('bstrIntroOverlay')?.remove();

@@ -164,9 +164,14 @@ export function when(iso, now = Date.now()) {
  * lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
  * Phần B (30/09): demGiay thêm dòng "Đã chờ N giây". Hàm đóng màn có thêm hienNut(nhan, viec): hiện một nút và focus vào nút
  * (trên nút, Enter và phím cách vẫn bấm được; phím khác vẫn bị chặn), và anNut(): focus về màn, ẩn nút, bỏ việc của nút.
+ * Chặn nhập hai lớp: keydown chặn ở window; mọi phần tử khác của body inert trong lúc màn mở (trình duyệt không cho focus vào đó,
+ * kể cả focus() của app lúc mở tài liệu, và không đưa vào đó chữ của bộ gõ, bảng emoji, đọc chính tả: những chữ này không qua
+ * keydown). Đóng màn thì gỡ inert đúng những phần tử đã đặt. Phần tử gắn vào body SAU khi màn mở (hộp đăng nhập do ensureToken mở
+ * giữa lúc chờ) không bị inert và nhận phím: vẫn dùng được cả bằng bàn phím.
  */
 export function moManChan(text, { demGiay = false } = {}) {
   ensureCss();
+  const truoc = document.activeElement; // lấy trước khi inert (inert làm mất focus)
   const overlay = document.createElement('div');
   overlay.className = 'bstr-gs-overlay';
   overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
@@ -182,16 +187,29 @@ export function moManChan(text, { demGiay = false } = {}) {
   const hen = giay ? setInterval(() => { giay.textContent = `Đã chờ ${Math.floor((Date.now() - batDau) / 1000)} giây`; }, 1000) : null;
   let viecNut = null; // khác null: nút đang hiện
   nut.addEventListener('click', () => viecNut?.());
-  // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy. Riêng Enter
-  // và phím cách trên nút đang hiện được đi qua, để bấm nút được bằng bàn phím.
+  // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy (inert không
+  // chặn trình nghe ở window/document). Riêng Enter và phím cách trên nút đang hiện được đi qua, để bấm nút được bằng bàn phím; phím
+  // trong một hộp thoại khác mở trên màn (hộp đăng nhập) cũng đi qua: hộp đó tự giữ phím lại (stopPropagation), không lọt xuống.
   const chan = (event) => {
     if (viecNut && event.target === nut && (event.key === 'Enter' || event.key === ' ')) return;
+    const khac = event.target?.closest?.('.bstr-gs-overlay');
+    if (khac && khac !== overlay) return;
     event.stopImmediatePropagation(); event.preventDefault();
   };
   window.addEventListener('keydown', chan, { capture: true });
   document.body.appendChild(overlay);
+  const khoa = [...document.body.children].filter((e) => e !== overlay && !e.inert);
+  khoa.forEach((e) => { e.inert = true; });
   hop.focus();
-  const dong = () => { clearInterval(hen); window.removeEventListener('keydown', chan, { capture: true }); overlay.remove(); };
+  const dong = () => {
+    clearInterval(hen);
+    window.removeEventListener('keydown', chan, { capture: true });
+    khoa.forEach((e) => { e.inert = false; });
+    overlay.remove();
+    // Trả focus chỉ khi chỗ cũ nằm trong một hộp thoại khác còn trên trang (hộp đăng nhập bên dưới: không thì Esc/Tab không tới hộp).
+    // Không trả về trình soạn thảo: phím còn đang giữ sẽ gõ vào tài liệu.
+    if (truoc?.isConnected && truoc.closest?.('.bstr-gs-overlay')) truoc.focus();
+  };
   dong.hienNut = (nhan, viec) => { viecNut = viec; nut.textContent = nhan; nut.hidden = false; nut.focus(); };
   // Focus về màn TRƯỚC khi ẩn: nút đang có focus mà bị ẩn thì focus rơi về body.
   dong.anNut = () => { viecNut = null; if (document.activeElement === nut) hop.focus(); nut.hidden = true; };

@@ -324,8 +324,16 @@ export async function dungBanNhan(Y, truocBin, goi, taoId = taoIdTaiLieu, banCu 
  *   2) giải mã lại và đối chiếu — sai một li là không ghi gì,
  *   3) sao lưu toàn bộ máy lên Drive — hỏng là không ghi gì,
  *   4) mới ghi IndexedDB trong một giao dịch.
+ * Cả bốn bước giữ khoá đồng bộ 'bstr-drive-sync' (chờ tới lượt, mọi tab): lượt gộp ghi bản gốc giữa lúc đọc (1) và ghi (4)
+ * thì bước 4 ghi đè bản gốc cũ lên, mất dòng tài liệu vừa gộp; gộp xong tải lại trang thì cắt ngang bước nhận. Không được
+ * gọi hàm này từ bên trong khoá đó (khoá không vào lại được: treo mãi). Trình duyệt không có Web Locks thì chạy thẳng.
  */
-export async function nhanGoi(goi, { taiLai = true } = {}) {
+export async function nhanGoi(goi, tuyChon = {}) {
+  const locks = globalThis.navigator?.locks;
+  return locks?.request ? locks.request('bstr-drive-sync', () => nhanGoiTrongKhoa(goi, tuyChon)) : nhanGoiTrongKhoa(goi, tuyChon);
+}
+
+async function nhanGoiTrongKhoa(goi, { taiLai = true } = {}) {
   kiemTraGoi(goi);
   const Y = await napYjs();
   const wsId = await store.wsNhan(goi.doc.id);
