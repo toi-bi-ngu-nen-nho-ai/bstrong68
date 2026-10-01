@@ -160,7 +160,7 @@ export function when(iso, now = Date.now()) {
  * Màn chặn nhập trong lúc gộp hoặc lấy dữ liệu từ Drive (thường vài giây; có khi tới nửa phút vì tải trước ảnh của tài
  * liệu đang mở; xong thì trang tự tải lại): không bấm, không gõ được vào tài liệu phía sau, để không có chữ nào gõ đúng
  * lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
- * Không đếm "Đã chờ N giây" (01/10, chủ dự án: người khác nhìn vào tưởng chậm nghiêm trọng).
+ * Không đếm "Đã chờ N giây", không nói "có khi tới nửa phút" (01/10, chủ dự án: người khác nhìn vào tưởng chậm nghiêm trọng).
  * Phần B (30/09): hàm đóng màn có thêm hienNut(nhan, viec): hiện một nút và focus vào nút
  * (trên nút, Enter và phím cách vẫn bấm được; phím khác vẫn bị chặn; hộp thoại khác mở trên màn đang giữ focus thì không giành),
  * và anNut(): focus về màn, ẩn nút, bỏ việc của nút.
@@ -176,7 +176,7 @@ export function moManChan(text) {
   overlay.className = 'bstr-gs-overlay';
   overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
       <p class="bstr-gs-title">${esc(text)}</p>
-      <p class="bstr-gs-desc">Đừng đóng trang. Việc này thường mất vài giây, có khi tới nửa phút; xong trang sẽ tự tải lại.</p>
+      <p class="bstr-gs-desc">Đừng đóng trang. Việc này thường mất vài giây, xong trang sẽ tự tải lại.</p>
       <button class="bstr-gs-btn" type="button" hidden></button></div>`;
   const hop = overlay.firstElementChild;
   const nut = overlay.querySelector('button');
