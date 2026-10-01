@@ -45,7 +45,7 @@ export function moTaLanLuu(now = new Date(), kemTaiKhoan = true) {
   const d = s?.savedAt ? new Date(s.savedAt) : null;
   if (!d || Number.isNaN(d.getTime())) return 'Chưa lưu lên Drive lần nào';
   const gio = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  const tk = kemTaiKhoan && s.taiKhoan ? ` · ${s.taiKhoan}` : ''; // máy nào đồng bộ với tài khoản nào: nhìn là biết
+  const tk = kemTaiKhoan && s.taiKhoan ? `\n${s.taiKhoan}` : ''; // máy nào đồng bộ với tài khoản nào: nhìn là biết (dòng riêng, index.html pre-line)
   return (d.toDateString() === now.toDateString() ? `Đã lưu Drive lúc ${gio}` : `Đã lưu Drive lúc ${gio} ${d.toLocaleDateString('vi-VN')}`) + tk;
 }
 
@@ -120,6 +120,8 @@ export function docCount(payload) {
   }, 0);
 }
 
+const CHUA_DANG_NHAP = 'BSTR_CHUA_DANG_NHAP'; // người dùng chọn không đăng nhập lại khi phiên Google hết hạn (ensureToken)
+
 /** Lấy token; nếu phiên ở máy chủ đăng nhập đã hết thì mời đăng nhập lại đúng một lần. */
 export async function ensureToken() {
   try {
@@ -134,7 +136,8 @@ export async function ensureToken() {
       const choice = await showSignIn();
       if (choice !== 'google') {
         baoChuaDongBo();
-        throw e;
+        // Mã riêng: người gọi giữ băng rôn "Chưa đồng bộ…" (đúng sự thật), không đè bằng "Không kết nối được…" / "Chưa lưu được…".
+        throw Object.assign(new Error('Người dùng chưa đăng nhập lại Google'), { code: CHUA_DANG_NHAP });
       }
       const token = await signIn();
       // Đăng nhập lại có thể bằng tài khoản khác (hộp chọn tài khoản của Google): trạng thái đồng bộ là của Drive cũ. Bỏ và tải lại trang:
@@ -296,6 +299,7 @@ async function luu({ force, background, dsBan }) {
       if (!background) setStatus('Đã lưu lên Drive');
     }
   } catch (e) {
+    if (e?.code === CHUA_DANG_NHAP) return false;
     console.error('[drive-sync] lưu thất bại', e);
     if (!baoDriveDay(e)) {
       setStatus(chuaBanMoi
@@ -483,6 +487,7 @@ async function gopNgay() {
     return 'xong';
   } catch (e) {
     dong();
+    if (e?.code === CHUA_DANG_NHAP) return 'loi'; // chưa ghi gì; băng rôn "Chưa đồng bộ…" giữ nguyên
     if (e?.code === LOI_THOI_CHO) {
       // Thôi chờ trước khi ghi (bấm nút hay hết giờ): máy chưa bị đổi, không nhớ đã gộp (lần sau gộp lại). Tab khác đang chờ khoá
       // không nhận 'da-ghi' nên mở lại, không tải lại. Mở app chạy tiếp như gộp lỗi: tải nền ảnh, cài lượt lưu nền.
@@ -745,6 +750,21 @@ function baoKhongMang() {
   globalThis.addEventListener?.('online', chay);
 }
 
+/**
+ * Lượt lưu nền (mỗi lần start() xong): mỗi CONFIG.autoSaveMs; rời app (trang ẩn) lưu ngay; quay lại app (trang hiện, ví dụ mở lại
+ * app trên iPhone) hỏi Drive ngay, máy khác có bản mới thì báo băng rôn; có mạng lại sau khi mạng rớt giữa phiên thì lưu ngay, gỡ lời báo
+ * "Chưa lưu được…" (không chờ lượt 2 phút).
+ */
+function caiLuuNen() {
+  const luuNen = () => saveNow({ background: true });
+  setInterval(() => {
+    luuNen();
+    if (conAnhCanTai) taiAnhNen();
+  }, CONFIG.autoSaveMs);
+  document.addEventListener('visibilitychange', luuNen);
+  globalThis.addEventListener?.('online', luuNen);
+}
+
 /** giuaPhien: chạy lại khi có mạng lại (baoKhongMang), người dùng có thể đang đọc hay gõ. */
 export async function start({ onSkip, giuaPhien = false } = {}) {
   // Chưa có Client ID thì đồng bộ KHÔNG THỂ chạy: mọi lần đăng nhập đều hỏng.
@@ -814,13 +834,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
     // quan trọng hơn; bỏ cờ.
     if (gop === 'khong-doi' && !luuHong) baoDaKhoiPhuc();
     else try { globalThis.sessionStorage?.removeItem(DA_KHOI_PHUC); } catch {}
-    setInterval(() => {
-      saveNow({ background: true });
-      if (conAnhCanTai) taiAnhNen();
-    }, CONFIG.autoSaveMs);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') saveNow({ background: true });
-    });
+    caiLuuNen();
     return true;
   } catch (e) {
     if (laLoiMang(e) && isSignedIn()) {
@@ -828,6 +842,7 @@ export async function start({ onSkip, giuaPhien = false } = {}) {
       baoKhongMang();
       return;
     }
+    if (e?.code === CHUA_DANG_NHAP) return;
     console.error('[drive-sync] khởi động lỗi', e);
     if (e?.loai === 'popup_failed_to_open') {
       // Bấm nút trên băng rôn là thao tác của người dùng, trình duyệt thường cho mở cửa sổ.
