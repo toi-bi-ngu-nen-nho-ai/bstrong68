@@ -406,7 +406,7 @@ async function gopNgay() {
   const thayThe = !state?.fileId;
   chuaBanMoi = true; // tới khi biết không còn gì cần gộp (khong-can, khong-doi); gộp xong thì trang tải lại
   // Phần B (30/09): máy đã từng đồng bộ chờ bản mới nhất có giới hạn (henCho); mọi lời chờ trước khi ghi đi qua hen.cho().
-  const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang lấy bản mới nhất từ máy khác…', { demGiay: true });
+  const dong = moManChan(thayThe ? 'Đang lấy dữ liệu từ Drive…' : 'Đang lấy bản mới nhất từ máy khác…');
   const hen = henCho(dong, !thayThe);
   let daGhi = false;
   try {

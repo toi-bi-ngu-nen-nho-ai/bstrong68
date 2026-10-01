@@ -156,17 +156,6 @@
        tab's min-content its full label width, so the icon-button group absorbs the squeeze
        instead - preserving the compact toolbar behavior at narrow widths. */
     .g02o6a1 { white-space: nowrap !important; }
-    /* Right sidebar Journal panel: "Đặt mẫu cho Nhật ký" template-picker card (headline + its
-       "Chọn" button) sits right under the calendar. display:none removes it from flow entirely
-       (no dead gap left behind) rather than just hiding the text, since the whole card - not
-       just the banner line - was asked to go. */
-    .w44g531 { display: none !important; }
-    /* Right sidebar Journal panel: the persistent "select journal template" icon button
-       (._4wovpc0, its own dropdown-trigger button, and the dropdown menu it opens) that sits
-       tucked in the bottom-left corner below the created/updated doc list. Same underlying
-       journal-template feature whose onboarding banner (.w44g531 above) was already removed -
-       this is the remaining always-visible trigger for it. display:none drops it from flow. */
-    ._4wovpc0 { display: none !important; }
     /* Bảng Cài đặt trên điện thoại (chủ dự án thử trên iPhone X, 25/09). Bản web chỉ có bố cục máy tính: hộp thoại bị
        gán cứng calc(100dvw - 100px) (275px ở khổ 375px), cột mục trái chiếm 25% nên tên mục cắt còn "G.", "T.", và mỗi
        hàng .two-col đặt nhãn cạnh điều khiển nên nhóm chọn 250px bóp nhãn thành mỗi chữ một dòng rồi tràn ra mép phải.
@@ -227,22 +216,22 @@
     <div id="app" data-version="1.0.0"></div>
 
 
-<script type="importmap">{"imports":{"lib0/":"/drive-sync/vendor/lib0/","/bstr-migrate.js":"/bstr-migrate.js?bstr-v2=2","/bstr-data.js":"/bstr-data.js?bstr-v2=2","/bstr-compat.js":"/bstr-compat.js?bstr-v2=2","/bstr-backup.js":"/bstr-backup.js?bstr-v2=3","/drive-sync/sync.js":"/drive-sync/sync.js?bstr-login=21","/drive-sync/ui.js":"/drive-sync/ui.js?bstr-login=11","/drive-sync/auth.js":"/drive-sync/auth.js?bstr-login=6","/drive-sync/config.js":"/drive-sync/config.js?bstr-share=4","/drive-sync/drive.js":"/drive-sync/drive.js?bstr-share=6","/drive-sync/store.js":"/drive-sync/store.js?bstr-share=13","/drive-sync/gop.js":"/drive-sync/gop.js?bstr-gop=4","/drive-sync/anh.js":"/drive-sync/anh.js?bstr-anh=3"}}</script>
+<script type="importmap">{"imports":{"lib0/":"/drive-sync/vendor/lib0/","/bstr-migrate.js":"/bstr-migrate.js?bstr-v2=2","/bstr-data.js":"/bstr-data.js?bstr-v2=2","/bstr-compat.js":"/bstr-compat.js?bstr-v2=2","/bstr-backup.js":"/bstr-backup.js?bstr-v2=3","/drive-sync/sync.js":"/drive-sync/sync.js?bstr-login=22","/drive-sync/ui.js":"/drive-sync/ui.js?bstr-login=12","/drive-sync/auth.js":"/drive-sync/auth.js?bstr-login=6","/drive-sync/config.js":"/drive-sync/config.js?bstr-share=4","/drive-sync/drive.js":"/drive-sync/drive.js?bstr-share=6","/drive-sync/store.js":"/drive-sync/store.js?bstr-share=13","/drive-sync/gop.js":"/drive-sync/gop.js?bstr-gop=4","/drive-sync/anh.js":"/drive-sync/anh.js?bstr-anh=3"}}</script>
 <!-- bstr-preload -->
-<link rel="preload" as="script" fetchpriority="low" href="/js/runtime.633fb626.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/npm-rxjs.2a651a07.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/i18n.d53559be.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/i18n-langs.i18n-completenesses.b9eef0d3.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/npm-bstrblocks.912c9df9.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/npm-react.d249c215.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/npm-jotai.ff53f772.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/npm-emotion.06ccdb5b.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/vendor.9a820b5d.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
-<link rel="preload" as="script" fetchpriority="low" href="/js/index.efdf77b2.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14">
+<link rel="preload" as="script" fetchpriority="low" href="/js/runtime.633fb626.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-rxjs.2a651a07.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/i18n.d53559be.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/i18n-langs.i18n-completenesses.b9eef0d3.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-bstrblocks.912c9df9.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-react.d249c215.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-jotai.ff53f772.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/npm-emotion.06ccdb5b.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/vendor.9a820b5d.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
+<link rel="preload" as="script" fetchpriority="low" href="/js/index.efdf77b2.js?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15">
 <!-- /bstr-preload -->
 <script src="/js/global-error-handler.js"></script>
 <script id="bstr-bundles" type="application/json">["/js/runtime.633fb626.js","/js/npm-rxjs.2a651a07.js","/js/i18n.d53559be.js","/js/i18n-langs.i18n-completenesses.b9eef0d3.js","/js/npm-bstrblocks.912c9df9.js","/js/npm-react.d249c215.js","/js/npm-jotai.ff53f772.js","/js/npm-emotion.06ccdb5b.js","/js/vendor.9a820b5d.js","/js/index.efdf77b2.js"]</script>
-<script type="module" src="/bstr-bootstrap.js?bstr-login=27"></script>
+<script type="module" src="/bstr-bootstrap.js?bstr-login=28"></script>
 <script>
 (function () {
   // Liên kết nhận tài liệu <app>/?nhan=<id tệp Drive> (drive-sync/nhan.js). Router của app bỏ query ngay

@@ -14,15 +14,15 @@ try {
   for (const src of bundles) {
     await new Promise((resolve,reject) => {
       const script=document.createElement('script');
-      script.src=src+'?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14'; script.async=false;
+      script.src=src+'?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15'; script.async=false;
       script.onload=resolve; script.onerror=()=>reject(new Error(`Không tải được ${src}`));
       document.body.append(script);
     });
     if(src.includes('/runtime.')) {
       globalThis.rspackChunk_bstr_monorepo.push([['bstr-cache-v1'],{},runtime=>{
         const chunk=runtime.u,css=runtime.miniCssF;
-        runtime.u=id=>chunk(id)+'?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=14';
-        if(css)runtime.miniCssF=id=>css(id)+'?bstr-schema=1&bstr-f5=14';
+        runtime.u=id=>chunk(id)+'?bstr-schema=1&bstr-samples=1&bstr-web=1&bstr-proxy=1&bstr-login=2&bstr-f5=15';
+        if(css)runtime.miniCssF=id=>css(id)+'?bstr-schema=1&bstr-f5=15';
       }]);
     }
   }

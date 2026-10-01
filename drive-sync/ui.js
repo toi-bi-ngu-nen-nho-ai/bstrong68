@@ -34,9 +34,7 @@ const CSS = `
 .bstr-gs-link{display:block;width:100%;min-height:44px;margin-top:8px;padding:8px;background:none;border:0;border-radius:8px;
   cursor:pointer;font:inherit;font-size:15px;color:color-mix(in srgb,var(--bstr-v2-text-primary,#141414) 72%,var(--bstr-v2-layer-background-overlayPanel,#fff))}
 .bstr-gs-link:hover{color:var(--bstr-v2-text-primary,#141414)}
-/* Màn chờ bản mới nhất (Phần B): số giây không làm chữ nhảy độ rộng; nút ẩn tới khi hienNut (display:flex của .bstr-gs-btn đè
-   thuộc tính hidden nếu không có luật này). */
-.bstr-gs-giay{font-variant-numeric:tabular-nums}
+/* Màn chờ bản mới nhất (Phần B): nút ẩn tới khi hienNut (display:flex của .bstr-gs-btn đè thuộc tính hidden nếu không có luật này). */
 .bstr-gs-btn[hidden]{display:none}
 .bstr-gs-overlay :focus-visible,.bstr-drive-slot :focus-visible{outline:2px solid var(--bstr-v2-button-primary,#1e96eb);outline-offset:2px}
 /* Băng rôn Drive: dải ngang đầu trang tài liệu, chữ đậm 14px, nút nền trắng và nút × bên phải; khổ <=520px thì
@@ -162,7 +160,8 @@ export function when(iso, now = Date.now()) {
  * Màn chặn nhập trong lúc gộp hoặc lấy dữ liệu từ Drive (thường vài giây; có khi tới nửa phút vì tải trước ảnh của tài
  * liệu đang mở; xong thì trang tự tải lại): không bấm, không gõ được vào tài liệu phía sau, để không có chữ nào gõ đúng
  * lúc dữ liệu trên máy đang được thay. Trả về hàm đóng màn.
- * Phần B (30/09): demGiay thêm dòng "Đã chờ N giây". Hàm đóng màn có thêm hienNut(nhan, viec): hiện một nút và focus vào nút
+ * Không đếm "Đã chờ N giây" (01/10, chủ dự án: người khác nhìn vào tưởng chậm nghiêm trọng).
+ * Phần B (30/09): hàm đóng màn có thêm hienNut(nhan, viec): hiện một nút và focus vào nút
  * (trên nút, Enter và phím cách vẫn bấm được; phím khác vẫn bị chặn; hộp thoại khác mở trên màn đang giữ focus thì không giành),
  * và anNut(): focus về màn, ẩn nút, bỏ việc của nút.
  * Chặn nhập hai lớp: keydown chặn ở window; mọi phần tử khác của body inert trong lúc màn mở (trình duyệt không cho focus vào đó,
@@ -170,22 +169,17 @@ export function when(iso, now = Date.now()) {
  * keydown). Đóng màn thì gỡ inert đúng những phần tử đã đặt. Phần tử gắn vào body SAU khi màn mở (hộp đăng nhập do ensureToken mở
  * giữa lúc chờ) không bị inert và nhận phím: vẫn dùng được cả bằng bàn phím.
  */
-export function moManChan(text, { demGiay = false } = {}) {
+export function moManChan(text) {
   ensureCss();
   const truoc = document.activeElement; // lấy trước khi inert (inert làm mất focus)
   const overlay = document.createElement('div');
   overlay.className = 'bstr-gs-overlay';
   overlay.innerHTML = `<div class="bstr-gs-modal bstr-gs-mid" role="status" aria-live="polite" tabindex="-1">
       <p class="bstr-gs-title">${esc(text)}</p>
-      <p class="bstr-gs-desc">Đừng đóng trang. Việc này thường mất vài giây, có khi tới nửa phút; xong trang sẽ tự tải lại.</p>${demGiay
-    ? '\n      <p class="bstr-gs-desc bstr-gs-giay" aria-live="off">Đã chờ 0 giây</p>' : ''}
+      <p class="bstr-gs-desc">Đừng đóng trang. Việc này thường mất vài giây, có khi tới nửa phút; xong trang sẽ tự tải lại.</p>
       <button class="bstr-gs-btn" type="button" hidden></button></div>`;
   const hop = overlay.firstElementChild;
   const nut = overlay.querySelector('button');
-  const giay = demGiay ? overlay.querySelector('.bstr-gs-giay') : null;
-  const batDau = Date.now();
-  // aria-live="off" ở dòng đếm: trình đọc màn hình không đọc lại mỗi giây.
-  const hen = giay ? setInterval(() => { giay.textContent = `Đã chờ ${Math.floor((Date.now() - batDau) / 1000)} giây`; }, 1000) : null;
   let viecNut = null; // khác null: nút đang hiện
   nut.addEventListener('click', () => viecNut?.());
   // Chặn ở window, pha bắt: bấm ra nền thì focus về body, chặn trên màn thôi thì phím tắt toàn cục của app vẫn chạy (inert không
@@ -208,7 +202,6 @@ export function moManChan(text, { demGiay = false } = {}) {
   khoa.forEach((e) => { e.inert = true; });
   hop.focus();
   const dong = () => {
-    clearInterval(hen);
     window.removeEventListener('keydown', chan, { capture: true });
     khoa.forEach((e) => { e.inert = false; });
     overlay.remove();
